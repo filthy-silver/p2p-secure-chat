@@ -14,9 +14,6 @@ import {
   generateDefaultNickname,
   signPayload,
   verifyPayload,
-  generateInviteToken,
-  verifyInviteToken,
-  signAdminModerationAction,
   bytesToMnemonic,
   mnemonicToBytes,
   bufferToHex,
@@ -27,6 +24,10 @@ import {
   createModeratorCertificate,
   verifyModeratorCertificate,
   isAuthorizedModerator,
+  generateInviteToken,
+  verifyInviteToken,
+  signAdminModerationAction,
+  WORDLIST,
   GENESIS_ADMIN_ROOT_FINGERPRINT
 } from '../src/chat/crypto.js';
 
@@ -325,6 +326,68 @@ describe('chat/crypto.js · Motor Criptográfico Autosoberano', () => {
     const stolenCertAuth = await isAuthorizedModerator(attackerSpki, 'general', 'DELETE_MESSAGE', [rootFp], modCert);
     assert.equal(stolenCertAuth.authorized, false);
     assert.match(stolenCertAuth.reason, /no corresponde a este moderador/i);
+  });
+
+  it('el diccionario mnemónico tiene exactamente 256 palabras únicas (byte↔palabra biyectivo)', () => {
+    assert.equal(WORDLIST.length, 256);
+    assert.equal(new Set(WORDLIST).size, 256);
+
+    const allBytes = new Uint8Array(12);
+    for (let start = 0; start < 256; start += 12) {
+      for (let i = 0; i < 12; i++) allBytes[i] = (start + i) % 256;
+      assert.deepEqual(Array.from(mnemonicToBytes(bytesToMnemonic(allBytes))), Array.from(allBytes));
+    }
+  });
+
+  it('el JSON canónico omite propiedades undefined igual que JSON.stringify (firmas estables tras el transporte)', async () => {
+    const keyPair = await generateIdentityKeyPair();
+    const { publicSpki } = await exportKeyPair(keyPair);
+
+    const payload = { type: 'ADMIN_KICK', targetPeerId: 'abcd1234', reason: undefined, timestamp: 1 };
+    const signature = await signPayload(keyPair.privateKey, payload);
+
+    // El receptor recibe el payload tras JSON.stringify/parse: `reason` desaparece
+    const transported = JSON.parse(JSON.stringify(payload));
+    assert.equal(canonicalJsonString(payload), canonicalJsonString(transported));
+    assert.equal(await verifyPayload(publicSpki, transported, signature), true);
+  });
+
+  it('los tokens de invitación admiten emojis/Unicode y detectan huella falsificada o emisor no confiable', async () => {
+    const adminKey = await generateIdentityKeyPair();
+    const { publicSpki } = await exportKeyPair(adminKey);
+    const adminFp = await getFingerprint(publicSpki);
+
+    const token = await generateInviteToken(adminKey.privateKey, publicSpki, adminFp, 'María 🎮', 1);
+    const ok = await verifyInviteToken(token, [adminFp]);
+    assert.equal(ok.valid, true);
+    assert.equal(ok.payload.invitedLabel, 'María 🎮');
+
+    // Emisor no incluido en la lista de confianza
+    const untrusted = await verifyInviteToken(token, ['00000000']);
+    assert.equal(untrusted.valid, false);
+    assert.match(untrusted.reason, /no es un administrador de confianza/i);
+
+    // Huella declarada ≠ huella de la clave que firma (suplantación del administrador raíz)
+    const spoofed = await generateInviteToken(adminKey.privateKey, publicSpki, GENESIS_ADMIN_ROOT_FINGERPRINT, 'x', 1);
+    const spoofRes = await verifyInviteToken(spoofed, [GENESIS_ADMIN_ROOT_FINGERPRINT]);
+    assert.equal(spoofRes.valid, false);
+    assert.match(spoofRes.reason, /no coincide con su clave pública/i);
+  });
+
+  it('un certificado de moderador sin expiresAt numérico es rechazado', async () => {
+    const rootKey = await generateIdentityKeyPair();
+    const { publicSpki: rootSpki } = await exportKeyPair(rootKey);
+    const rootFp = await getFingerprint(rootSpki);
+    const modKey = await generateIdentityKeyPair();
+    const { publicSpki: modSpki } = await exportKeyPair(modKey);
+
+    const cert = await createModeratorCertificate(rootKey.privateKey, rootSpki, modSpki, '*', ['KICK'], 24);
+    delete cert.certificatePayload.expiresAt;
+    cert.signature = await signPayload(rootKey.privateKey, cert.certificatePayload); // re-firmado por la raíz
+
+    const res = await verifyModeratorCertificate(cert, [rootFp]);
+    assert.equal(res.valid, false);
+    assert.match(res.error, /expirado/i);
   });
 
 });

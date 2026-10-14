@@ -32,13 +32,13 @@ export const WORDLIST = [
   'nostalgia', 'nova', 'nube', 'nucleo', 'oasis', 'obelisco', 'oceano', 'olivo', 'olmo', 'onda',
   'onix', 'optica', 'orbita', 'origen', 'orion', 'orozco', 'orto', 'oruga', 'oruro', 'otero',
   'otoño', 'ovalle', 'oxigeno', 'ozono', 'palma', 'pampa', 'panal', 'pantera', 'paramo', 'paso',
-  'pastizal', 'patria', 'pelicano', 'peña', 'perla', 'pesca', 'faro', 'pico', 'piedra', 'pilar',
+  'pastizal', 'patria', 'pelicano', 'peña', 'perla', 'pesca', 'petalo', 'pico', 'piedra', 'pilar',
   'pino', 'plata', 'platino', 'playa', 'pluma', 'polo', 'portico', 'prado', 'prisma', 'puente',
   'puerto', 'puma', 'punto', 'quinto', 'quasar', 'quena', 'quimera', 'quinoa', 'radar', 'radio',
   'rafaga', 'raiz', 'rama', 'rambla', 'rayo', 'refugio', 'reloj', 'renuevo', 'resina', 'riel',
   'rio', 'roble', 'roca', 'rocio', 'rubi', 'rumbo', 'sabana', 'safiro', 'saga', 'sagrado',
   'salina', 'sauce', 'selva', 'senda', 'serena', 'sierra', 'silice', 'sol', 'sombra', 'sonda',
-  'surco', 'tallo', 'tejon', 'tiempo', 'tierra', 'tigre', 'torre', 'trueno', 'valle', 'viento'
+  'surco', 'tallo', 'tejon', 'tiempo', 'tierra', 'tigre'
 ];
 
 const ADJECTIVES = [
@@ -213,13 +213,23 @@ export function generateDefaultNickname(fingerprint) {
  * @returns {string}
  */
 export function canonicalJsonString(obj) {
+  if (obj !== null && typeof obj === 'object' && typeof obj.toJSON === 'function') {
+    obj = obj.toJSON();
+  }
   if (obj === null || typeof obj !== 'object') {
-    return JSON.stringify(obj);
+    // JSON.stringify(undefined|function|symbol) devuelve undefined: se normaliza a null en arrays
+    return JSON.stringify(obj) ?? 'null';
   }
   if (Array.isArray(obj)) {
     return '[' + obj.map(item => canonicalJsonString(item)).join(',') + ']';
   }
-  const sortedKeys = Object.keys(obj).sort();
+  // Las propiedades undefined/función/símbolo se omiten, igual que hace JSON.stringify al transmitir
+  const sortedKeys = Object.keys(obj)
+    .filter(k => {
+      const t = typeof obj[k];
+      return t !== 'undefined' && t !== 'function' && t !== 'symbol';
+    })
+    .sort();
   const pairs = sortedKeys.map(k => `${JSON.stringify(k)}:${canonicalJsonString(obj[k])}`);
   return '{' + pairs.join(',') + '}';
 }
@@ -279,65 +289,6 @@ export async function verifyPayload(publicKeyOrSpki, payload, signatureBase64) {
     console.warn('[Crypto] Error verificando firma:', err);
     return false;
   }
-}
-
-export const DEFAULT_COMMUNITY = 'cfgs_3d';
-
-/**
- * Genera un token de invitación autofirmado a la comunidad (Invite-Only).
- */
-export async function generateInviteToken(adminPrivateKey, adminPublicSpki, adminFingerprint, invitedLabel = 'compañero', expiresInHours = 72) {
-  const payload = {
-    community: DEFAULT_COMMUNITY,
-    adminFingerprint,
-    invitedLabel,
-    issuedAt: Date.now(),
-    expiresAt: Date.now() + (expiresInHours * 3600 * 1000)
-  };
-
-  const signature = await signPayload(adminPrivateKey, payload);
-  const tokenObj = { payload, signature, adminSpki: adminPublicSpki };
-  return btoa(JSON.stringify(tokenObj));
-}
-
-/**
- * Valida un token de invitación autofirmado.
- */
-export async function verifyInviteToken(tokenString) {
-  try {
-    const rawJson = atob(tokenString);
-    const tokenObj = JSON.parse(rawJson);
-    if (!tokenObj || !tokenObj.payload || !tokenObj.signature || !tokenObj.adminSpki) {
-      return { valid: false, reason: 'Estructura del token inválida' };
-    }
-
-    if (Date.now() > tokenObj.payload.expiresAt) {
-      return { valid: false, reason: 'El token de invitación ha expirado', payload: tokenObj.payload };
-    }
-
-    const isValid = await verifyPayload(tokenObj.adminSpki, tokenObj.payload, tokenObj.signature);
-    if (!isValid) {
-      return { valid: false, reason: 'Firma del token inválida' };
-    }
-
-    return { valid: true, payload: tokenObj.payload };
-  } catch (err) {
-    return { valid: false, reason: err.message };
-  }
-}
-
-/**
- * Firma una acción de moderación administrativa.
- */
-export async function signAdminModerationAction(adminPrivateKey, actionType, actionDetails = {}) {
-  const actionPayload = {
-    action: actionType,
-    details: actionDetails,
-    timestamp: Date.now()
-  };
-
-  const signature = await signPayload(adminPrivateKey, actionPayload);
-  return { actionPayload, signature };
 }
 
 /**
@@ -487,17 +438,36 @@ export async function generateInviteToken(adminPrivateKey, adminPublicSpki, admi
 
   const signature = await signPayload(adminPrivateKey, payload);
   const tokenObj = { payload, signature, adminSpki: adminPublicSpki };
-  return btoa(JSON.stringify(tokenObj));
+  // UTF-8 seguro: btoa() lanza InvalidCharacterError con caracteres fuera de Latin-1 (emojis, etc.)
+  return bufferToBase64(new TextEncoder().encode(JSON.stringify(tokenObj)));
+}
+
+/**
+ * Decodifica el Base64 de un token (UTF-8, con retrocompatibilidad Latin-1 de tokens antiguos).
+ * @param {string} tokenString
+ * @returns {string}
+ */
+function decodeTokenBase64(tokenString) {
+  const bytes = new Uint8Array(base64ToBuffer(tokenString.trim()));
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder('latin1').decode(bytes);
+  }
 }
 
 /**
  * Valida un token de invitación a la comunidad.
+ * IMPORTANTE: sin `trustedAdminFingerprints`, solo se garantiza integridad (el token no ha sido
+ * manipulado), NO que el emisor sea un administrador legítimo. Pasa siempre la lista de raíces
+ * de confianza cuando el token otorgue algún privilegio.
  * @param {string} tokenString - Token en Base64
+ * @param {string[]} [trustedAdminFingerprints=[]] - Huellas de emisores autorizados (opcional)
  * @returns {Promise<{ valid: boolean, reason?: string, payload?: Object }>}
  */
-export async function verifyInviteToken(tokenString) {
+export async function verifyInviteToken(tokenString, trustedAdminFingerprints = []) {
   try {
-    const raw = atob(tokenString.trim());
+    const raw = decodeTokenBase64(tokenString);
     const tokenObj = JSON.parse(raw);
     const { payload, signature, adminSpki } = tokenObj;
 
@@ -509,8 +479,19 @@ export async function verifyInviteToken(tokenString) {
       return { valid: false, reason: 'El token pertenece a otra comunidad' };
     }
 
-    if (payload.expiresAt && payload.expiresAt < Date.now()) {
+    // La expiración es obligatoria: un token sin expiresAt válido nunca caducaría
+    if (!Number.isFinite(payload.expiresAt) || payload.expiresAt < Date.now()) {
       return { valid: false, reason: 'La invitación ha expirado' };
+    }
+
+    // La huella declarada debe corresponder a la clave que firma (anti-suplantación del emisor)
+    const derivedFp = await getFingerprint(adminSpki);
+    if (derivedFp !== payload.adminFingerprint) {
+      return { valid: false, reason: 'La huella del emisor no coincide con su clave pública' };
+    }
+
+    if (trustedAdminFingerprints.length > 0 && !trustedAdminFingerprints.includes(derivedFp)) {
+      return { valid: false, reason: 'El emisor de la invitación no es un administrador de confianza' };
     }
 
     const isValidSig = await verifyPayload(adminSpki, payload, signature);
@@ -536,7 +517,7 @@ export async function signAdminModerationAction(adminPrivateKey, actionType, tar
     type: actionType,
     target: targetData,
     timestamp: Date.now(),
-    nonce: Math.random().toString(36).slice(2, 8)
+    nonce: bufferToHex(crypto.getRandomValues(new Uint8Array(8)))
   };
 
   const signature = await signPayload(adminPrivateKey, actionPayload);
@@ -616,9 +597,9 @@ export async function verifyFileAuthorshipCertificate(certificate, expectedFileH
 }
 
 /**
- * Huella digital (Fingerprint) predeterminada del Administrador Raíz Génesis de filthysilver.net.
+ * Huella digital (Fingerprint) predeterminada del Administrador Raíz Génesis de filthysilver.net (FilthySilver).
  */
-export const GENESIS_ADMIN_ROOT_FINGERPRINT = 'f117b055';
+export const GENESIS_ADMIN_ROOT_FINGERPRINT = '8c196b38';
 
 /**
  * Crea un Certificado Criptográfico de Delegación de Moderación firmado por el Administrador Raíz.
@@ -680,7 +661,7 @@ export async function verifyModeratorCertificate(certificate, trustedRootFingerp
       return { valid: false, error: 'Tipo de certificado no válido' };
     }
 
-    if (Date.now() > certificatePayload.expiresAt) {
+    if (!Number.isFinite(certificatePayload.expiresAt) || Date.now() > certificatePayload.expiresAt) {
       return { valid: false, error: 'Certificado de moderador expirado' };
     }
 
@@ -742,8 +723,8 @@ export async function isAuthorizedModerator(
     }
 
     const payload = certResult.payload;
-    const certModSpki = payload.moderatorPublicSpki || payload.moderatorSpki;
-    if (certModSpki !== actorSpki) {
+    // El certificado emite el campo como `moderatorPublicSpki` (ver createModeratorCertificate)
+    if (payload.moderatorPublicSpki !== actorSpki) {
       return { authorized: false, role: 'none', reason: 'El certificado no corresponde a este moderador' };
     }
 
@@ -751,7 +732,7 @@ export async function isAuthorizedModerator(
       return { authorized: false, role: 'none', reason: `Certificado no válido para la sala ${roomId}` };
     }
 
-    if (!payload.permissions.includes(requiredPermission)) {
+    if (!Array.isArray(payload.permissions) || !payload.permissions.includes(requiredPermission)) {
       return { authorized: false, role: 'none', reason: `Permiso ${requiredPermission} no concedido` };
     }
 

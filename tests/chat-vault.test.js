@@ -98,7 +98,14 @@ describe('chat-vault.js · Bóveda Criptográfica Zero-Knowledge en Cloudflare',
 
     const signature = await signPayload(
       keyPair.privateKey,
-      { action: 'backup_vault', fingerprint, seedHash, timestamp }
+      {
+        action: 'backup_vault',
+        fingerprint,
+        seedHash,
+        ciphertext: vault.ciphertext,
+        iv: vault.iv,
+        timestamp
+      }
     );
 
     const { context: postCtx, memory } = createMockContext('POST', 'http://localhost/api/chat/vault', {
@@ -147,6 +154,79 @@ describe('chat-vault.js · Bóveda Criptográfica Zero-Knowledge en Cloudflare',
     const restoredKeys = await importKeyPair(decryptedJwk, getData.publicSpki);
     assert.ok(restoredKeys.privateKey);
     assert.ok(restoredKeys.publicKey);
+  });
+
+  async function buildSignedBackup(keyPair, publicSpki, seedHash, vault, overrides = {}) {
+    const fingerprint = await getFingerprint(publicSpki);
+    const timestamp = Date.now();
+    const signature = await signPayload(keyPair.privateKey, {
+      action: 'backup_vault',
+      fingerprint,
+      seedHash,
+      ciphertext: vault.ciphertext,
+      iv: vault.iv,
+      timestamp
+    });
+    return { fingerprint, publicSpki, seedHash, vault, nickname: 'Tester', timestamp, signature, ...overrides };
+  }
+
+  it('rechaza respaldos sin firma digital (la firma es obligatoria)', async () => {
+    const keyPair = await generateIdentityKeyPair();
+    const { publicSpki } = await exportKeyPair(keyPair);
+    const fingerprint = await getFingerprint(publicSpki);
+
+    const { context } = createMockContext('POST', 'http://localhost/api/chat/vault', {
+      fingerprint,
+      publicSpki,
+      seedHash: 'c'.repeat(64),
+      vault: { ciphertext: 'abc', iv: 'def' }
+    });
+    const res = await handleVaultRequest(context);
+    assert.equal(res.status, 401);
+  });
+
+  it('la firma está ligada al contenido cifrado: sustituir el ciphertext invalida el respaldo', async () => {
+    const keyPair = await generateIdentityKeyPair();
+    const { publicSpki } = await exportKeyPair(keyPair);
+    const seedHash = 'd'.repeat(64);
+
+    const body = await buildSignedBackup(keyPair, publicSpki, seedHash, { ciphertext: 'AAAA', iv: 'BBBB' });
+    body.vault = { ciphertext: 'MALICIOSO', iv: 'BBBB' }; // sustitución tras capturar la firma
+
+    const { context } = createMockContext('POST', 'http://localhost/api/chat/vault', body);
+    const res = await handleVaultRequest(context);
+    assert.equal(res.status, 401);
+  });
+
+  it('una bóveda existente no puede ser sobrescrita por otra identidad, pero sí por su propietario', async () => {
+    const owner = await generateIdentityKeyPair();
+    const { publicSpki: ownerSpki } = await exportKeyPair(owner);
+    const attacker = await generateIdentityKeyPair();
+    const { publicSpki: attackerSpki } = await exportKeyPair(attacker);
+    const seedHash = 'e'.repeat(64);
+
+    const { context: ctx1 } = createMockContext('POST', 'http://localhost/api/chat/vault',
+      await buildSignedBackup(owner, ownerSpki, seedHash, { ciphertext: 'ORIGINAL', iv: 'IV1' }));
+    assert.equal((await handleVaultRequest(ctx1)).status, 201);
+    const sharedEnv = ctx1.env;
+
+    const attackReq = new Request('http://localhost/api/chat/vault', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(await buildSignedBackup(attacker, attackerSpki, seedHash, { ciphertext: 'ROBADA', iv: 'IV2' }))
+    });
+    assert.equal((await handleVaultRequest({ request: attackReq, env: sharedEnv })).status, 403);
+
+    const updateReq = new Request('http://localhost/api/chat/vault', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(await buildSignedBackup(owner, ownerSpki, seedHash, { ciphertext: 'ACTUALIZADA', iv: 'IV3' }))
+    });
+    assert.equal((await handleVaultRequest({ request: updateReq, env: sharedEnv })).status, 201);
+
+    const getReq = new Request(`http://localhost/api/chat/vault?seedHash=${seedHash}`, { method: 'GET' });
+    const data = await (await handleVaultRequest({ request: getReq, env: sharedEnv })).json();
+    assert.equal(data.vault.ciphertext, 'ACTUALIZADA');
   });
 
 });

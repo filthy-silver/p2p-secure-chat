@@ -736,6 +736,257 @@ body {
   opacity: 1;
 }
 
+/* ───────── Torbox Integration & DDL Cards ───────── */
+.btn-danger-outline {
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  border-radius: 6px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-danger-outline:hover {
+  background: var(--danger);
+  color: #ffffff;
+}
+
+/* Modal de Ajustes Torbox */
+.torbox-account-status {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.85rem;
+  margin-top: 0.75rem;
+}
+
+.torbox-status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.65rem;
+}
+
+.torbox-status-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.badge-plan {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.badge-plan.pro {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--success);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.badge-plan.free {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--warning);
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.torbox-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.5rem;
+}
+
+.torbox-metric {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  font-size: 0.8rem;
+}
+
+.torbox-metric .metric-label {
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+/* Banner de Sugerencia Rápida DDL */
+.torbox-quick-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1.25rem;
+  background: linear-gradient(90deg, rgba(2, 132, 199, 0.14), rgba(56, 189, 248, 0.08));
+  border-top: 1px solid rgba(56, 189, 248, 0.35);
+  border-bottom: 1px solid rgba(56, 189, 248, 0.35);
+  font-size: 0.85rem;
+}
+
+.torbox-quick-banner .banner-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text);
+}
+
+.torbox-quick-banner .banner-icon {
+  font-size: 1.15rem;
+}
+
+.torbox-quick-banner .banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-banner-action {
+  background: var(--accent);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s ease;
+}
+
+.btn-banner-action:hover {
+  opacity: 0.9;
+}
+
+.btn-banner-close {
+  background: transparent;
+  border: none;
+  font-size: 1.2rem;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 1;
+}
+
+/* Tarjeta DDL en el Feed de Mensajes */
+.torbox-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.9rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-top: 0.4rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.torbox-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.torbox-brand-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+}
+
+.torbox-seed-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.76rem;
+  color: var(--success);
+  font-weight: 600;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+}
+
+.torbox-file-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.torbox-meta-row {
+  display: flex;
+  gap: 1.2rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+
+.torbox-meta-item strong {
+  color: var(--text);
+}
+
+.btn-torbox-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  background: var(--accent);
+  color: #ffffff !important;
+  text-decoration: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.25);
+}
+
+.btn-torbox-download:hover {
+  background: #0284c7;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+}
+
+.torbox-magnet-details {
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.torbox-magnet-details summary {
+  cursor: pointer;
+  font-weight: 500;
+  user-select: none;
+}
+
+.torbox-magnet-raw {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  background: var(--surface);
+  padding: 0.45rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  word-break: break-all;
+  margin-top: 0.35rem;
+  user-select: all;
+  color: var(--text);
+}
+
 /* ───────── Responsive ───────── */
 @media (max-width: 640px) {
   .chat-app-container {

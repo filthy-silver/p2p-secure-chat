@@ -25,7 +25,23 @@ import {
   decryptPrivateKeyWithMnemonic
 } from './crypto.js';
 
-import { escapeHtml } from '../domain/sanitizer.js';
+import { escapeHtml, sanitizeUrl } from '../domain/sanitizer.js';
+
+import {
+  getTorboxKey,
+  setTorboxKey,
+  removeTorboxKey,
+  hasTorboxKey,
+  isCloudSeedingEnabled,
+  setCloudSeedingEnabled,
+  verifyAccount as verifyTorboxAccount,
+  addMagnetOrTorrent,
+  getTorrentList,
+  requestDownloadLink,
+  formatBytes as formatTorboxBytes,
+  isMagnetLink,
+  parseMagnetName
+} from './torbox.js';
 
 import {
   loadStoredIdentity,
@@ -62,7 +78,9 @@ const state = {
       return null;
     }
   })(),
-  isKicked: false
+  isKicked: false,
+  pendingMagnet: null,
+  pendingTorrentFile: null
 };
 
 // Elementos del DOM
@@ -78,6 +96,7 @@ const elements = {
   btnSend: document.getElementById('btn-send'),
 
   // Botones de cabecera
+  btnOpenTorbox: document.getElementById('btn-open-torbox'),
   btnOpenIdentity: document.getElementById('btn-open-identity'),
   btnShareRoom: document.getElementById('btn-share-room'),
   btnSwitchRoom: document.getElementById('btn-switch-room'),
@@ -90,6 +109,26 @@ const elements = {
   identityModal: document.getElementById('identity-modal'),
   shareModal: document.getElementById('share-modal'),
   switchRoomModal: document.getElementById('switch-room-modal'),
+  modalTorboxSettings: document.getElementById('modal-torbox-settings'),
+
+  // Elementos del modal de Torbox
+  torboxApiKeyInput: document.getElementById('torbox-api-key-input'),
+  btnToggleTorboxKeyVis: document.getElementById('btn-toggle-torbox-key-vis'),
+  btnVerifyTorbox: document.getElementById('btn-verify-torbox'),
+  torboxStatusCard: document.getElementById('torbox-status-card'),
+  torboxPlanBadge: document.getElementById('torbox-plan-badge'),
+  torboxUserEmail: document.getElementById('torbox-user-email'),
+  torboxActiveSlots: document.getElementById('torbox-active-slots'),
+  torboxDownloadLimit: document.getElementById('torbox-download-limit'),
+  torboxCloudSeedToggle: document.getElementById('torbox-cloud-seed-toggle'),
+  btnSaveTorbox: document.getElementById('btn-save-torbox'),
+  btnDisconnectTorbox: document.getElementById('btn-disconnect-torbox'),
+
+  // Banner rápido de conversión DDL
+  torboxQuickBanner: document.getElementById('torbox-quick-banner'),
+  torboxQuickBannerText: document.getElementById('torbox-quick-banner-text'),
+  btnConvertTorboxQuick: document.getElementById('btn-convert-torbox-quick'),
+  btnDismissTorboxQuick: document.getElementById('btn-dismiss-torbox-quick'),
 
   // Elementos del modal de identidad
   inputNickname: document.getElementById('modal-nickname'),
@@ -216,6 +255,16 @@ async function setupUserIdentity() {
     });
   }
 
+  // Si la identidad corresponde al Administrador Raíz Génesis (FilthySilver), fijar rol y apodo
+  if (state.identity && state.identity.fingerprint.toLowerCase() === GENESIS_ADMIN_ROOT_FINGERPRINT.toLowerCase()) {
+    state.isAdmin = true;
+    localStorage.setItem('p2p_chat_is_admin', 'true');
+    if (state.identity.nickname !== 'FilthySilver') {
+      state.identity.nickname = 'FilthySilver';
+      updateStoredNickname('FilthySilver');
+    }
+  }
+
   // Sincronizar respaldo de la bóveda cifrada en Cloudflare (Zero-Knowledge)
   backupUserVaultToCloudflare(state.identity);
 
@@ -235,7 +284,14 @@ async function backupUserVaultToCloudflare(identity) {
     const timestamp = Date.now();
     const signature = await signPayload(
       identity.privateKey,
-      { action: 'backup_vault', fingerprint: identity.fingerprint, seedHash, timestamp }
+      {
+        action: 'backup_vault',
+        fingerprint: identity.fingerprint,
+        seedHash,
+        ciphertext: vault.ciphertext,
+        iv: vault.iv,
+        timestamp
+      }
     );
 
     await fetch('/api/chat/vault', {
@@ -262,6 +318,8 @@ async function backupUserVaultToCloudflare(identity) {
 function updateIdentityUi() {
   if (!state.identity) return;
 
+  const isGenesisRoot = state.identity.fingerprint.toLowerCase() === GENESIS_ADMIN_ROOT_FINGERPRINT.toLowerCase();
+
   if (elements.inputNickname) {
     elements.inputNickname.value = state.identity.nickname;
   }
@@ -281,13 +339,22 @@ function updateIdentityUi() {
     });
   }
 
-  // Indicador de modo moderador
+  // Indicador de modo moderador / Administrador Raíz Génesis
   if (elements.adminStatusBadge) {
-    elements.adminStatusBadge.textContent = state.isAdmin ? '🛡️ Moderador Activo' : '👤 Miembro Regular';
-    elements.adminStatusBadge.style.color = state.isAdmin ? 'var(--warning)' : 'var(--muted)';
-  }
-  if (elements.btnToggleAdminMode) {
-    elements.btnToggleAdminMode.textContent = state.isAdmin ? 'Desactivar Modo Admin' : 'Activar Modo Admin';
+    if (isGenesisRoot) {
+      elements.adminStatusBadge.innerHTML = '👑 Administrador Raíz Génesis (FilthySilver)';
+      elements.adminStatusBadge.style.color = 'var(--accent)';
+      if (elements.btnToggleAdminMode) {
+        elements.btnToggleAdminMode.style.display = 'none';
+      }
+    } else {
+      elements.adminStatusBadge.textContent = state.isAdmin ? '🛡️ Moderador Activo' : '👤 Miembro Regular';
+      elements.adminStatusBadge.style.color = state.isAdmin ? 'var(--warning)' : 'var(--muted)';
+      if (elements.btnToggleAdminMode) {
+        elements.btnToggleAdminMode.style.display = '';
+        elements.btnToggleAdminMode.textContent = state.isAdmin ? 'Desactivar Modo Admin' : 'Activar Modo Admin';
+      }
+    }
   }
 }
 
@@ -364,7 +431,11 @@ function joinRoom(roomId) {
       appendSystemMessage(`✏️ ${escapeHtml(oldName)} ahora se llama ${escapeHtml(peerProfile.nickname)}`);
     },
     onMessage: (message) => {
-      appendChatMessage(message, false);
+      if (message.torbox) {
+        appendTorboxCard(message, false);
+      } else {
+        appendChatMessage(message, false);
+      }
       appendRoomHistory(state.currentRoomId, { ...message, isMe: false });
     },
     onMessageDeleted: (messageId) => {
@@ -424,9 +495,9 @@ function updatePeersListUi() {
     pill.className = 'peer-pill';
     pill.innerHTML = `
       <span class="peer-dot online"></span>
-      <span class="peer-name" title="ID: 0x${peerId}">${escapeHtml(peer.nickname)}</span>
-      ${peer.isModerator ? `<span class="peer-badge-mod" title="Moderador Verificado Criptográficamente (${peer.moderatorRole})">🛡️</span>` : ''}
-      ${state.isAdmin ? `<button type="button" class="btn-kick-peer" data-peer-id="${peerId}" title="Expulsar a este usuario">⛔</button>` : ''}
+      <span class="peer-name" title="ID: 0x${escapeHtml(peerId)}">${escapeHtml(peer.nickname)}</span>
+      ${peer.isModerator ? `<span class="peer-badge-mod" title="Moderador Verificado Criptográficamente (${escapeHtml(peer.moderatorRole)})">🛡️</span>` : ''}
+      ${state.isAdmin ? `<button type="button" class="btn-kick-peer" data-peer-id="${escapeHtml(peerId)}" title="Expulsar a este usuario">⛔</button>` : ''}
     `;
 
     if (state.isAdmin) {
@@ -459,7 +530,7 @@ function appendChatMessage(msg, isMe = false) {
         <span class="msg-meta">
           ${msg.isVerified ? '<span class="verified-badge" title="Firma criptográfica verificada (ECDSA)">🛡️</span>' : ''}
           <time>${timeString}</time>
-          ${state.isAdmin ? `<button type="button" class="btn-mod-delete" data-msg-id="${msg.id}" title="Eliminar mensaje como moderador">🗑️</button>` : ''}
+          ${state.isAdmin ? `<button type="button" class="btn-mod-delete" data-msg-id="${escapeHtml(msg.id)}" title="Eliminar mensaje como moderador">🗑️</button>` : ''}
         </span>
       </div>
       <div class="msg-body">${escapeHtml(msg.text)}</div>
@@ -505,7 +576,9 @@ function appendFileBubble(fileData, isMe = false) {
         </div>
 
         <div class="file-authorship-badge">
-          🛡️ Autoría Criptográfica Verificada: ${escapeHtml(fileData.fromNickname)}
+          ${(isMe || (fileData.authorship?.valid && fileData.isValidHash !== false))
+            ? `🛡️ Autoría Criptográfica Verificada: ${escapeHtml(fileData.authorship?.authorNickname || fileData.fromNickname)}`
+            : '⚠️ Autoría o integridad NO verificada: no abras este archivo si no confías en el remitente'}
         </div>
 
         <div class="file-hash-tag">
@@ -513,7 +586,7 @@ function appendFileBubble(fileData, isMe = false) {
         </div>
 
         ${fileData.blobUrl ? `
-          <a href="${fileData.blobUrl}" download="${escapeHtml(fileData.fileName)}" class="btn-download-file">
+          <a href="${escapeHtml(fileData.blobUrl)}" download="${escapeHtml(fileData.fileName)}" class="btn-download-file">
             ⬇️ Descargar archivo directo
           </a>
         ` : `
@@ -525,6 +598,246 @@ function appendFileBubble(fileData, isMe = false) {
 
   elements.messagesFeed.appendChild(msgDiv);
   elements.messagesFeed.scrollTop = elements.messagesFeed.scrollHeight;
+}
+
+/**
+ * Renderiza una tarjeta interactiva de Descarga Directa Torbox con estado de Cloud Seeding.
+ * Zero-Knowledge: Solo muestra el nombre, tamaño, sembrado 24/7 y la URL CDN pública
+ * (la API Key del emisor nunca viaja en el paquete).
+ */
+function appendTorboxCard(msg, isMe = false) {
+  if (!elements.messagesFeed) return;
+
+  const msgDiv = document.createElement('div');
+  msgDiv.className = `chat-bubble-container ${isMe ? 'msg-outbound' : 'msg-inbound'}`;
+  msgDiv.dataset.msgId = msg.id;
+
+  const timeString = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const tb = msg.torbox || {};
+  const formattedSize = formatTorboxBytes(tb.fileSize);
+  const safeDdlUrl = sanitizeUrl(tb.ddlUrl);
+  const safeMagnet = (typeof tb.magnetUrl === 'string' && tb.magnetUrl.startsWith('magnet:?')) ? tb.magnetUrl : '';
+
+  msgDiv.innerHTML = `
+    <div class="chat-bubble">
+      <div class="msg-header">
+        <span class="msg-author">${escapeHtml(msg.fromNickname)}</span>
+        <span class="msg-meta">
+          ${msg.isVerified ? '<span class="verified-badge" title="Firma criptográfica verificada (ECDSA)">🛡️</span>' : ''}
+          <time>${timeString}</time>
+          ${state.isAdmin ? `<button type="button" class="btn-mod-delete" data-msg-id="${escapeHtml(msg.id)}" title="Eliminar mensaje como moderador">🗑️</button>` : ''}
+        </span>
+      </div>
+      <div class="torbox-card">
+        <div class="torbox-card-header">
+          <span class="torbox-brand-pill">⚡ Torbox Direct Download</span>
+          <span class="torbox-seed-status">
+            ${tb.isCloudSeeding !== false ? 'Sembrando en la nube 24/7 🟢 (Peers activos)' : 'Sembrado en proceso 🟡'}
+          </span>
+        </div>
+
+        <div class="torbox-file-name">📦 ${escapeHtml(tb.fileName || 'Proyecto 3D')}</div>
+
+        <div class="torbox-meta-row">
+          <span class="torbox-meta-item">Tamaño: <strong>${formattedSize}</strong></span>
+          <span class="torbox-meta-item">Velocidad: <strong>CDN Ultra-Rápida</strong></span>
+        </div>
+
+        ${safeDdlUrl ? `
+          <a href="${safeDdlUrl}" target="_blank" rel="noopener noreferrer" class="btn-torbox-download">
+            <span>Descargar a máxima velocidad (DDL) 📥</span>
+          </a>
+        ` : `
+          <div style="font-size: 0.8rem; color: var(--muted); padding: 0.4rem; background: var(--surface); border-radius: 6px;">
+            ⏳ Procesando en Torbox CDN... Si tarda unos minutos, puedes usar el enlace magnet alternativo abajo.
+          </div>
+        `}
+
+        ${safeMagnet ? `
+          <details class="torbox-magnet-details">
+            <summary>Ver enlace magnet original (P2P alternativo)</summary>
+            <div class="torbox-magnet-raw">${escapeHtml(safeMagnet)}</div>
+          </details>
+        ` : ''}
+      </div>
+    </div>
+  `;
+
+  if (state.isAdmin) {
+    const delBtn = msgDiv.querySelector('.btn-mod-delete');
+    delBtn?.addEventListener('click', () => {
+      executeAdminDeleteMessage(msg.id);
+    });
+  }
+
+  elements.messagesFeed.appendChild(msgDiv);
+  elements.messagesFeed.scrollTop = elements.messagesFeed.scrollHeight;
+}
+
+/**
+ * Muestra el banner flotante de sugerencia para conversión a DDL.
+ */
+function showQuickBanner(text) {
+  if (elements.torboxQuickBanner) {
+    if (elements.torboxQuickBannerText) {
+      elements.torboxQuickBannerText.textContent = text;
+    }
+    if (elements.btnConvertTorboxQuick) {
+      elements.btnConvertTorboxQuick.textContent = hasTorboxKey() ? '⚡ Convertir a DDL con Torbox' : '⚡ Configurar Torbox';
+    }
+    elements.torboxQuickBanner.style.display = 'flex';
+  }
+}
+
+/**
+ * Oculta el banner flotante de sugerencia rápida.
+ */
+function hideQuickBanner() {
+  if (elements.torboxQuickBanner) {
+    elements.torboxQuickBanner.style.display = 'none';
+  }
+}
+
+/**
+ * Abre el modal de configuración de Torbox y refresca el estado de la cuenta.
+ */
+async function openTorboxModal() {
+  const currentKey = getTorboxKey();
+  if (elements.torboxApiKeyInput) {
+    elements.torboxApiKeyInput.value = currentKey;
+    elements.torboxApiKeyInput.type = 'password';
+  }
+  if (elements.torboxCloudSeedToggle) {
+    elements.torboxCloudSeedToggle.checked = isCloudSeedingEnabled();
+  }
+  if (currentKey) {
+    await updateTorboxAccountStatus(currentKey);
+  } else if (elements.torboxStatusCard) {
+    elements.torboxStatusCard.style.display = 'none';
+  }
+  openModal(elements.modalTorboxSettings);
+}
+
+/**
+ * Consulta y actualiza los indicadores de plan, slots y cuota de Torbox.
+ */
+async function updateTorboxAccountStatus(key) {
+  if (!elements.torboxStatusCard) return;
+  try {
+    const data = await verifyTorboxAccount(key);
+    elements.torboxStatusCard.style.display = 'block';
+
+    const planRaw = data.plan !== undefined ? data.plan : (data.user && data.user.plan);
+    let planBadgeText = 'Free 🟡';
+    let isPro = false;
+    if (planRaw === 2 || planRaw === 3 || planRaw === 'pro' || planRaw === 'standard') {
+      planBadgeText = 'Pro 🟢';
+      isPro = true;
+    } else if (planRaw === 1 || planRaw === 'essential') {
+      planBadgeText = 'Essential 🟢';
+      isPro = true;
+    } else if (planRaw === 0 || planRaw === 'free') {
+      planBadgeText = 'Free 🟡';
+      isPro = false;
+    } else if (planRaw) {
+      planBadgeText = `Plan ${planRaw} 🟢`;
+      isPro = true;
+    }
+
+    if (elements.torboxPlanBadge) {
+      elements.torboxPlanBadge.textContent = planBadgeText;
+      elements.torboxPlanBadge.className = `badge-plan ${isPro ? 'pro' : 'free'}`;
+    }
+
+    if (elements.torboxUserEmail) {
+      elements.torboxUserEmail.textContent = data.email || (data.user && data.user.email) || 'Usuario Conectado';
+    }
+
+    if (elements.torboxActiveSlots) {
+      const active = data.active_torrents ?? data.active_downloads ?? data.slots ?? 0;
+      const maxSlots = data.max_torrents ?? (isPro ? 'Ilimitados' : '1 activo');
+      elements.torboxActiveSlots.textContent = `${active} / ${maxSlots}`;
+    }
+
+    if (elements.torboxDownloadLimit) {
+      const downloaded = data.total_downloaded ?? 0;
+      elements.torboxDownloadLimit.textContent = formatTorboxBytes(downloaded);
+    }
+  } catch (err) {
+    console.warn('[Torbox Status] Error verificando cuenta:', err);
+    if (elements.torboxStatusCard) {
+      elements.torboxStatusCard.style.display = 'none';
+    }
+  }
+}
+
+/**
+ * Convierte un magnet o archivo .torrent a Descarga Directa (DDL) con Cloud Seeding 24/7 y lo transmite a la sala.
+ */
+async function convertAndBroadcastTorbox(magnetOrFile) {
+  if (!state.roomInstance) {
+    alert('Debes estar conectado a la sala para compartir proyectos.');
+    return;
+  }
+  const isFile = magnetOrFile instanceof Blob || (typeof File !== 'undefined' && magnetOrFile instanceof File);
+  const targetName = isFile ? magnetOrFile.name : parseMagnetName(magnetOrFile);
+
+  appendSystemMessage(`⏳ Conectando con Torbox para procesar "${escapeHtml(targetName)}"...`);
+
+  try {
+    const isSeed = isCloudSeedingEnabled();
+    const addResult = await addMagnetOrTorrent(magnetOrFile, { seed: isSeed ? 1 : 0 });
+
+    const torrentId = addResult.torrent_id || addResult.id || (addResult.data && (addResult.data.torrent_id || addResult.data.id));
+    const fileName = addResult.name || targetName;
+    const torrentHash = addResult.hash || '';
+
+    let fileSize = addResult.size || (isFile ? magnetOrFile.size : 0);
+    let ddlUrl = '';
+
+    if (torrentId) {
+      try {
+        ddlUrl = await requestDownloadLink(torrentId);
+      } catch (dlErr) {
+        try {
+          const list = await getTorrentList();
+          const item = list.find(t => String(t.id) === String(torrentId) || (torrentHash && t.hash === torrentHash));
+          if (item) {
+            fileSize = item.size || fileSize;
+            if (item.files && item.files.length > 0) {
+              ddlUrl = await requestDownloadLink(torrentId, item.files[0].id);
+            }
+          }
+        } catch {}
+      }
+    }
+
+    // Zero-Knowledge: NUNCA se comparte la API Key en el mensaje
+    const torboxPayload = {
+      isTorboxCard: true,
+      torrentId: torrentId || null,
+      fileName,
+      fileSize,
+      ddlUrl: ddlUrl || '',
+      magnetUrl: typeof magnetOrFile === 'string' ? magnetOrFile : (torrentHash ? `magnet:?xt=urn:btih:${torrentHash}&dn=${encodeURIComponent(fileName)}` : ''),
+      isCloudSeeding: isSeed,
+      createdAt: Date.now()
+    };
+
+    const sentMsg = await state.roomInstance.sendMessage(
+      `⚡ [Torbox DDL] ${fileName}`,
+      torboxPayload
+    );
+
+    appendTorboxCard(sentMsg, true);
+    appendRoomHistory(state.currentRoomId, { ...sentMsg, isMe: true });
+    appendSystemMessage(`✓ Proyecto "${escapeHtml(fileName)}" listo con Descarga Directa Torbox y Cloud Seeding 24/7.`);
+
+  } catch (err) {
+    console.error('[Torbox] Error al convertir archivo:', err);
+    appendSystemMessage(`❌ Error en Torbox: ${escapeHtml(err.message)}`);
+    alert(`Error de Torbox: ${err.message}\nVerifica tus slots disponibles o la validez de tu API Key.`);
+  }
 }
 
 /**
@@ -578,7 +891,7 @@ async function loadUserInviteTree() {
           const item = document.createElement('div');
           item.className = 'invite-tree-item';
           item.innerHTML = `
-            <span class="invite-code-pill">${inv.code}</span>
+            <span class="invite-code-pill">${escapeHtml(inv.code)}</span>
             <span>Para: ${escapeHtml(inv.targetLabel)}</span>
             <span class="invite-status-badge ${inv.used ? 'claimed' : ''}">
               ${inv.used ? `✓ Canjeado (${escapeHtml(inv.usedByLabel)})` : 'Pendiente'}
@@ -653,6 +966,12 @@ async function claimInviteCode() {
   }
 
   try {
+    const timestamp = Date.now();
+    const signature = await signPayload(
+      state.identity.privateKey,
+      { action: 'claim', code, userFingerprint: state.identity.fingerprint, timestamp }
+    );
+
     const res = await fetch('/api/chat/invites', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -660,7 +979,10 @@ async function claimInviteCode() {
         action: 'claim',
         code,
         userFingerprint: state.identity.fingerprint,
-        nickname: state.identity.nickname
+        userPublicSpki: state.identity.publicSpki,
+        nickname: state.identity.nickname,
+        timestamp,
+        signature
       })
     });
 
@@ -682,11 +1004,21 @@ async function claimInviteCode() {
  * Maneja visualmente la eliminación de un mensaje por moderador.
  */
 function handleUiMessageDeleted(messageId) {
-  const msgEl = elements.messagesFeed?.querySelector(`[data-msg-id="${messageId}"]`);
+  const msgEl = Array.from(elements.messagesFeed?.querySelectorAll('[data-msg-id]') || [])
+    .find(el => el.dataset.msgId === String(messageId));
   if (msgEl) {
+    const cardEl = msgEl.querySelector('.torbox-card');
+    if (cardEl) cardEl.remove();
     const bodyEl = msgEl.querySelector('.msg-body');
     if (bodyEl) {
       bodyEl.innerHTML = '<em style="color: var(--muted); font-size: 0.85rem;">🚫 Este mensaje ha sido eliminado por un moderador.</em>';
+    } else {
+      const bubble = msgEl.querySelector('.chat-bubble');
+      if (bubble) {
+        const notice = document.createElement('div');
+        notice.innerHTML = '<em style="color: var(--muted); font-size: 0.85rem;">🚫 Este mensaje ha sido eliminado por un moderador.</em>';
+        bubble.appendChild(notice);
+      }
     }
   }
 }
@@ -771,7 +1103,9 @@ function renderRoomHistory(roomId) {
   if (history.length > 0) {
     appendSystemMessage('— Historial reciente de la sala —');
     history.forEach(item => {
-      if (item.isFile) {
+      if (item.torbox) {
+        appendTorboxCard(item, item.isMe);
+      } else if (item.isFile) {
         appendFileBubble(item, item.isMe);
       } else {
         appendChatMessage(item, item.isMe);
@@ -795,6 +1129,7 @@ function bindEvents() {
 
       elements.messageInput.value = '';
       elements.messageInput.focus();
+      hideQuickBanner();
 
       try {
         const sentMsg = await state.roomInstance.sendMessage(text);
@@ -806,6 +1141,44 @@ function bindEvents() {
     });
   }
 
+  // Detección inteligente de enlaces magnet en el input
+  elements.messageInput?.addEventListener('input', () => {
+    const text = (elements.messageInput.value || '').trim();
+    if (isMagnetLink(text)) {
+      state.pendingMagnet = text;
+      state.pendingTorrentFile = null;
+      if (hasTorboxKey()) {
+        showQuickBanner('⚡ Enlace magnet detectado. ¿Convertir a Descarga Directa con Torbox y sembrar 24/7?');
+      } else {
+        showQuickBanner('⚡ Enlace magnet detectado. Configura Torbox para convertir a Descarga Directa de alta velocidad.');
+      }
+    } else if (!state.pendingTorrentFile) {
+      hideQuickBanner();
+    }
+  });
+
+  // Acciones del banner rápido de Torbox
+  elements.btnConvertTorboxQuick?.addEventListener('click', async () => {
+    if (!hasTorboxKey()) {
+      openTorboxModal();
+      return;
+    }
+    const target = state.pendingTorrentFile || state.pendingMagnet;
+    if (target) {
+      hideQuickBanner();
+      await convertAndBroadcastTorbox(target);
+      state.pendingTorrentFile = null;
+      state.pendingMagnet = null;
+      if (elements.messageInput) elements.messageInput.value = '';
+    }
+  });
+
+  elements.btnDismissTorboxQuick?.addEventListener('click', () => {
+    state.pendingTorrentFile = null;
+    state.pendingMagnet = null;
+    hideQuickBanner();
+  });
+
   // Adjuntar archivos con botón
   elements.btnAttachFile?.addEventListener('click', () => {
     elements.fileInput?.click();
@@ -814,7 +1187,13 @@ function bindEvents() {
   elements.fileInput?.addEventListener('change', async (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      await handleSendFile(file);
+      if (file.name.toLowerCase().endsWith('.torrent') && hasTorboxKey()) {
+        state.pendingTorrentFile = file;
+        state.pendingMagnet = null;
+        showQuickBanner(`⚡ ¿Convertir "${file.name}" a Descarga Directa con Torbox y sembrar 24/7?`);
+      } else {
+        await handleSendFile(file);
+      }
       elements.fileInput.value = '';
     }
   });
@@ -835,10 +1214,67 @@ function bindEvents() {
       elements.messagesFeed.style.outline = 'none';
       const file = e.dataTransfer?.files?.[0];
       if (file) {
-        await handleSendFile(file);
+        if (file.name.toLowerCase().endsWith('.torrent') && hasTorboxKey()) {
+          state.pendingTorrentFile = file;
+          state.pendingMagnet = null;
+          showQuickBanner(`⚡ ¿Convertir "${file.name}" a Descarga Directa con Torbox y sembrar 24/7?`);
+        } else {
+          await handleSendFile(file);
+        }
       }
     });
   }
+
+  // Modales: Abrir y Cerrar Torbox
+  elements.btnOpenTorbox?.addEventListener('click', openTorboxModal);
+
+  elements.btnToggleTorboxKeyVis?.addEventListener('click', () => {
+    if (elements.torboxApiKeyInput) {
+      elements.torboxApiKeyInput.type = elements.torboxApiKeyInput.type === 'password' ? 'text' : 'password';
+    }
+  });
+
+  elements.btnVerifyTorbox?.addEventListener('click', async () => {
+    const key = (elements.torboxApiKeyInput?.value || '').trim();
+    if (!key) {
+      alert('Introduce tu API Key de Torbox antes de verificar.');
+      return;
+    }
+    elements.btnVerifyTorbox.disabled = true;
+    elements.btnVerifyTorbox.textContent = 'Verificando...';
+    try {
+      await updateTorboxAccountStatus(key);
+      alert('✓ ¡Cuenta de Torbox validada correctamente!');
+    } catch (err) {
+      alert(`Error de verificación: ${err.message}`);
+    } finally {
+      elements.btnVerifyTorbox.disabled = false;
+      elements.btnVerifyTorbox.textContent = 'Verificar';
+    }
+  });
+
+  elements.btnSaveTorbox?.addEventListener('click', () => {
+    const key = (elements.torboxApiKeyInput?.value || '').trim();
+    const seedEnabled = elements.torboxCloudSeedToggle ? elements.torboxCloudSeedToggle.checked : true;
+    if (key) {
+      setTorboxKey(key);
+      setCloudSeedingEnabled(seedEnabled);
+      closeModal(elements.modalTorboxSettings);
+      appendSystemMessage('⚡ Cuenta de Torbox guardada. Descargas Directas CDN y Cloud Seeding 24/7 activos.');
+    } else {
+      alert('Introduce una clave válida o pulsa "Desconectar" para borrarla.');
+    }
+  });
+
+  elements.btnDisconnectTorbox?.addEventListener('click', () => {
+    if (!confirm('¿Desconectar tu cuenta de Torbox y eliminar tu clave privada de este navegador?')) return;
+    removeTorboxKey();
+    if (elements.torboxApiKeyInput) elements.torboxApiKeyInput.value = '';
+    if (elements.torboxStatusCard) elements.torboxStatusCard.style.display = 'none';
+    closeModal(elements.modalTorboxSettings);
+    hideQuickBanner();
+    appendSystemMessage('ℹ️ Cuenta de Torbox desconectada de este navegador.');
+  });
 
   // Modales: Abrir y Cerrar
   elements.btnOpenIdentity?.addEventListener('click', () => {

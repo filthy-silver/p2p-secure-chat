@@ -45,6 +45,13 @@
     </div>
 
     <div class="topbar-right">
+      <button type="button" class="btn-icon-text" id="btn-open-torbox" title="Configurar Descargas Directas con Torbox">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+          <path fill="currentColor" d="M11 21h-1l1-7H7.5c-.88 0-.33-.75-.31-.78C8.48 10.94 10.42 7.54 13.01 3h1l-1 7h3.5c.49 0 .78.36.49.77L11 21z"/>
+        </svg>
+        <span>Torbox DDL ⚡</span>
+      </button>
+
       <button type="button" class="btn-icon-text" id="btn-share-room" title="Invitar a compañeros a esta sala">
         <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
           <path fill="currentColor" d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92c0-1.61-1.31-2.92-2.92-2.92z"/>
@@ -84,6 +91,18 @@
   <main class="chat-messages-container" id="messages-feed" role="log" aria-live="polite">
     <!-- Mensajes de chat y avisos del sistema -->
   </main>
+
+  <!-- Banner sugerido para conversión DDL cuando se detecta un magnet -->
+  <div id="torbox-quick-banner" class="torbox-quick-banner" style="display: none;">
+    <div class="banner-content">
+      <span class="banner-icon">⚡</span>
+      <span class="banner-text" id="torbox-quick-banner-text">Se ha detectado un enlace magnet. ¿Convertir a Descarga Directa de alta velocidad con Torbox?</span>
+    </div>
+    <div class="banner-actions">
+      <button type="button" id="btn-convert-torbox-quick" class="btn-banner-action">⚡ Convertir a DDL</button>
+      <button type="button" id="btn-dismiss-torbox-quick" class="btn-banner-close" aria-label="Cerrar aviso">&times;</button>
+    </div>
+  </div>
 
   <!-- 4. Barra Inferior de Entrada de Texto -->
   <footer class="chat-input-bar">
@@ -261,6 +280,85 @@
         <div class="recent-rooms-grid" id="recent-rooms-list">
           <!-- Botones de salas visitadas -->
         </div>
+      </div>
+    </div>
+  </div>
+<!-- Modal 4: Configuración de Torbox (Descargas Directas CDN y Cloud Seeding 24/7) -->
+<div class="chat-modal" id="modal-torbox-settings" role="dialog" aria-modal="true" aria-labelledby="modal-torbox-title">
+  <div class="modal-backdrop"></div>
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <h2 id="modal-torbox-title">⚡ Torbox DDL & Cloud Seeding</h2>
+      <button type="button" class="btn-modal-close" aria-label="Cerrar modal">&times;</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="info-box">
+        Conecta tu cuenta de <strong>Torbox (torbox.app)</strong> para convertir enlaces magnet y torrents pesados (.blend, texturas, renders) en enlaces de <strong>Descarga Directa (DDL)</strong> a velocidad CDN para toda la clase.
+        Tus proyectos seguirán sembrándose 24/7 en la nube aunque apagues tu ordenador.
+      </div>
+
+      <div class="form-group">
+        <label for="torbox-api-key-input">API Key de Torbox (Zero-Knowledge, solo en tu navegador)</label>
+        <div class="input-with-button">
+          <input
+            type="password"
+            id="torbox-api-key-input"
+            class="form-input"
+            placeholder="Introduce tu clave privada de Torbox..."
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button type="button" class="btn-icon-text" id="btn-toggle-torbox-key-vis" title="Ver u ocultar clave">👁️</button>
+          <button type="button" class="btn-icon-text" id="btn-verify-torbox">Verificar</button>
+        </div>
+        <p style="font-size: 0.75rem; color: var(--muted); margin-top: 0.35rem;">
+          Obtén tu clave en <a href="https://torbox.app/settings" target="_blank" rel="noopener noreferrer" style="color: var(--accent);">torbox.app/settings</a>. Tu clave nunca se almacena en el servidor ni se comparte con otros compañeros.
+        </p>
+      </div>
+
+      <!-- Caja de estado de cuenta -->
+      <div id="torbox-status-card" class="torbox-account-status" style="display: none;">
+        <div class="torbox-status-header">
+          <span class="torbox-status-title">Estado de la cuenta</span>
+          <span id="torbox-plan-badge" class="badge-plan">Plan Desconocido</span>
+        </div>
+        <div class="torbox-metrics-grid">
+          <div class="torbox-metric">
+            <span class="metric-label">Correo:</span>
+            <strong id="torbox-user-email">-</strong>
+          </div>
+          <div class="torbox-metric">
+            <span class="metric-label">Slots activos:</span>
+            <strong id="torbox-active-slots">-</strong>
+          </div>
+          <div class="torbox-metric">
+            <span class="metric-label">Descargas:</span>
+            <strong id="torbox-download-limit">-</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cloud Seeding Checkbox -->
+      <div class="form-group" style="margin-top: 1rem; padding: 0.75rem; background: var(--surface-2); border-radius: 8px; border: 1px solid var(--line);">
+        <label style="display: flex; align-items: flex-start; gap: 0.6rem; cursor: pointer; font-size: 0.88rem; font-weight: 500;">
+          <input type="checkbox" id="torbox-cloud-seed-toggle" style="margin-top: 0.2rem; transform: scale(1.15);" checked />
+          <span>
+            <strong>Activar Cloud Seeding automático (24/7) 🟢</strong><br />
+            <span style="font-size: 0.78rem; color: var(--muted); font-weight: normal;">
+              Mantiene los torrents sembrando en la nube para que tus compañeros descarguen a máxima velocidad incluso si apagas tu equipo.
+            </span>
+          </span>
+        </label>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.25rem; gap: 0.5rem; flex-wrap: wrap;">
+        <button type="button" class="btn-danger-outline" id="btn-disconnect-torbox">
+          Desconectar / Borrar Clave
+        </button>
+        <button type="button" class="btn-send" id="btn-save-torbox" style="padding: 0.5rem 1.25rem;">
+          Guardar Ajustes
+        </button>
       </div>
     </div>
   </div>

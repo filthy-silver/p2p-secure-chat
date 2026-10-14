@@ -34,6 +34,78 @@ const NOSTR_RELAYS = [
   'wss://relay.nostr.band'
 ];
 
+// --- Límites de seguridad y control de flujo ---
+const PEER_ID_REGEX = /^[0-9a-f]{8}$/;               // huella corta (ver getFingerprint)
+const MESSAGE_ID_REGEX = /^[A-Za-z0-9_-]{1,64}$/;
+const FILE_ID_REGEX = /^[A-Za-z0-9_-]{1,64}$/;
+const MAX_MESSAGE_LENGTH = 4000;
+const MAX_NICKNAME_LENGTH = 32;
+const MAX_SPKI_LENGTH = 512;                          // SPKI P-256 en Base64 ≈ 124 caracteres
+const MAX_SEEN_MESSAGE_IDS = 500;
+const MAX_PACKET_LENGTH = 128 * 1024;                 // Tamaño máximo de un paquete DataChannel entrante
+const MAX_SIGNAL_LENGTH = 64 * 1024;                  // Tamaño máximo de una señal de señalización entrante
+const ADMIN_ACTION_MAX_SKEW_MS = 5 * 60 * 1000;       // Frescura de órdenes de moderación
+const HANDSHAKE_MAX_SKEW_MS = 2 * 60 * 1000;          // Frescura de la prueba de posesión del handshake
+const CONTROL_RATE_WINDOW_MS = 10000;
+const CONTROL_RATE_MAX = 20;                          // Paquetes de control por peer y ventana
+export const FILE_CHUNK_SIZE = 16 * 1024;             // 16 KB por trozo
+const MAX_CHUNK_BASE64_LENGTH = Math.ceil(FILE_CHUNK_SIZE / 3) * 4;
+const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024;         // 2 GB
+const MAX_CONCURRENT_TRANSFERS = 5;
+const MAX_TRANSFERS_PER_PEER = 2;
+const BACKPRESSURE_HIGH = 256 * 1024;                 // Pausar el envío por encima de este búfer
+const BACKPRESSURE_LOW = 64 * 1024;                   // Reanudar cuando el búfer baje de este nivel
+const BACKPRESSURE_TIMEOUT_MS = 10000;
+const RECONNECT_BASE_MS = 1000;
+const RECONNECT_MAX_MS = 30000;
+const MAX_PENDING_ICE_CANDIDATES = 64;
+
+/**
+ * Sanea un nombre de archivo recibido o a enviar: sin separadores de ruta, caracteres de control
+ * ni secuencias de directorio padre, con longitud acotada.
+ * @param {any} name
+ * @returns {string}
+ */
+export function sanitizeFileName(name) {
+  if (typeof name !== 'string') return 'archivo';
+  const cleaned = name
+    .replace(/[\u0000-\u001f\u007f]/g, '')     // Eliminar caracteres de control
+    .replace(/(?:\.\.[/\\])+/g, '')             // Eliminar secuencias de directory traversal (../ o ..\)
+    .replace(/[\\/:*?"<>|]/g, '_')             // Reemplazar separadores y caracteres reservados de FS
+    .replace(/\.\.+/g, '.')                    // Colapsar puntos dobles restantes
+    .trim()
+    .slice(0, 120);
+  return cleaned.replace(/^[_.\s]+$/, '') || 'archivo';
+}
+
+/**
+ * Sanea un apodo remoto: solo texto, sin caracteres de control y de longitud acotada.
+ * @param {any} nickname
+ * @returns {string} Cadena vacía si no es válido
+ */
+export function sanitizeNickname(nickname) {
+  if (typeof nickname !== 'string') return '';
+  return nickname.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, MAX_NICKNAME_LENGTH);
+}
+
+/**
+ * Comprueba que un timestamp numérico esté dentro de una ventana de frescura.
+ * @param {any} timestamp
+ * @param {number} maxSkewMs
+ * @returns {boolean}
+ */
+export function isFreshTimestamp(timestamp, maxSkewMs) {
+  return Number.isFinite(timestamp) && Math.abs(Date.now() - timestamp) <= maxSkewMs;
+}
+
+/**
+ * @param {any} id
+ * @returns {boolean} true si es una huella de peer bien formada (8 hex)
+ */
+export function isValidPeerId(id) {
+  return typeof id === 'string' && PEER_ID_REGEX.test(id);
+}
+
 export class P2PMeshRoom {
   /**
    * @param {Object} options
@@ -86,8 +158,13 @@ export class P2PMeshRoom {
     // Soporte para pruebas locales instantáneas entre pestañas (BroadcastChannel nativo)
     this.broadcastChannel = null;
     this.cloudflareSocket = null;
+    this._cloudflareReconnectTimer = null;
+    this._readyTimer = null;
     this.nostrSockets = [];
     this._nostrReconnectTimers = new Map();
+    this.peerControlTimestamps = new Map();
+    this.pendingIceCandidates = new Map();
+    this.seenMessageIds = new Set();
     this.isDestroyed = false;
 
     this._initSignaling();
@@ -123,13 +200,13 @@ export class P2PMeshRoom {
     });
 
     // 3. Señalización nativa en Cloudflare Workers API (/api/chat/signal)
-    this._initCloudflareSignaling();
+    this._initCloudflareSignaling(0);
 
     // 4. Conexión a relays públicos Nostr como fallback
     this._initNostrSignaling();
 
     // Notificar estado inicial listo
-    setTimeout(() => {
+    this._readyTimer = setTimeout(() => {
       if (!this.isDestroyed && this.peers.size === 0) {
         this.onStatusChange('ready', 'Sala abierta. Esperando a que otros compañeros se unan...');
       }
@@ -139,8 +216,10 @@ export class P2PMeshRoom {
   /**
    * Conecta con la API de señalización nativa de Cloudflare Workers (chat.filthysilver.net).
    * @private
+   * @param {number} [retryAttempt=0]
    */
-  _initCloudflareSignaling() {
+  _initCloudflareSignaling(retryAttempt = 0) {
+    if (this.isDestroyed) return;
     if (typeof window === 'undefined' || !window.location || !window.location.host) return;
 
     try {
@@ -159,9 +238,11 @@ export class P2PMeshRoom {
       ws.onclose = () => {
         this.cloudflareSocket = null;
         if (!this.isDestroyed) {
-          setTimeout(() => {
-            if (!this.isDestroyed) this._initCloudflareSignaling();
-          }, 4000);
+          const delay = Math.min(RECONNECT_BASE_MS * Math.pow(2, retryAttempt), RECONNECT_MAX_MS);
+          this._cloudflareReconnectTimer = setTimeout(() => {
+            this._cloudflareReconnectTimer = null;
+            if (!this.isDestroyed) this._initCloudflareSignaling(retryAttempt + 1);
+          }, delay);
         }
       };
 
@@ -515,8 +596,12 @@ export class P2PMeshRoom {
   async _handleIncomingData(packet, fromPeerId) {
     const peerObj = this.peers.get(fromPeerId);
 
-    // Control anti-spam: máximo 4 mensajes cada 2 segundos por peer
+    // Sin peer registrado (p. ej. ya desconectado) no se acepta ningún paquete
+    if (!peerObj || !packet || typeof packet !== 'object') return;
+
+    // 1. Mensajes de chat firmados
     if (packet.type === 'CHAT_MESSAGE') {
+      // Control anti-spam: máximo 4 mensajes cada 2 segundos por peer
       const now = Date.now();
       const history = this.peerMessageTimestamps.get(fromPeerId) || [];
       const recent = history.filter(t => now - t < 2000);
@@ -528,56 +613,75 @@ export class P2PMeshRoom {
       this.peerMessageTimestamps.set(fromPeerId, recent);
 
       const { messageData, signature } = packet;
+      if (!messageData || typeof messageData !== 'object' || typeof signature !== 'string') return;
 
-      // Verificamos la firma criptográfica con la clave pública del emisor
-      const isVerified = await verifyPayload(
-        peerObj?.profile.publicSpki || messageData.publicSpki,
-        messageData,
-        signature
-      );
+      // El mensaje debe pertenecer a ESTA sala y haber sido emitido por el peer del canal:
+      // evita reutilizar mensajes firmados en otras salas o atribuirlos a otro remitente.
+      if (messageData.roomId !== this.roomId || messageData.senderId !== fromPeerId) {
+        console.warn(`[P2P Security] Mensaje descartado: sala o remitente no coinciden (${fromPeerId}).`);
+        return;
+      }
+      if (typeof messageData.id !== 'string' || !MESSAGE_ID_REGEX.test(messageData.id)) return;
+      if (typeof messageData.text !== 'string' || messageData.text.length > MAX_MESSAGE_LENGTH) return;
+      if (!Number.isFinite(messageData.timestamp)) return;
+
+      // Anti-replay: un mismo mensaje firmado no se entrega dos veces
+      const seenKey = `${fromPeerId}:${messageData.id}`;
+      if (this.seenMessageIds.has(seenKey)) return;
+
+      // Se verifica SIEMPRE con la clave autenticada del peer (vinculada a su huella en la
+      // señalización), nunca con la clave que declare el propio mensaje.
+      const trustedSpki = peerObj.profile.publicSpki;
+      if (!trustedSpki) return;
+
+      const isVerified = await verifyPayload(trustedSpki, messageData, signature);
+      if (!isVerified) {
+        // Un mensaje sin firma válida es una suplantación: no se muestra
+        console.warn(`[P2P Security] Mensaje con firma inválida descartado (${fromPeerId}).`);
+        return;
+      }
+
+      this.seenMessageIds.add(seenKey);
+      if (this.seenMessageIds.size > MAX_SEEN_MESSAGE_IDS) {
+        this.seenMessageIds.delete(this.seenMessageIds.values().next().value);
+      }
 
       this.onMessage({
         id: messageData.id,
         text: messageData.text,
         timestamp: messageData.timestamp,
         fromPeerId: fromPeerId,
-        fromNickname: peerObj?.profile.nickname || `Peer#${fromPeerId.slice(0, 4)}`,
-        isVerified
+        fromNickname: peerObj.profile.nickname || `Peer#${fromPeerId.slice(0, 4)}`,
+        isVerified: true,
+        torbox: messageData.torbox || null
       });
       return;
     }
 
     // 2. Notificación de actualización de perfil/apodo y Handshake de Moderador
     if (packet.type === 'PROFILE_UPDATE' || packet.type === 'HELLO_HANDSHAKE') {
-      if (peerObj) {
-        const oldName = peerObj.profile.nickname;
-        peerObj.profile.nickname = packet.nickname || oldName;
-        if (packet.publicSpki) {
-          peerObj.profile.publicSpki = packet.publicSpki;
-          const fp = await getFingerprint(packet.publicSpki);
+      if (!this._allowControlPacket(fromPeerId)) return;
 
-          // Verificar si es Administrador Raíz directo
-          if (this.trustedAdminFingerprints.includes(fp)) {
-            peerObj.profile.isModerator = true;
-            peerObj.profile.moderatorRole = 'root';
-          } else if (packet.moderatorCertificate) {
-            // Verificar si presenta un Certificado de Delegación válido
-            const certCheck = await verifyModeratorCertificate(packet.moderatorCertificate, this.trustedAdminFingerprints);
-            if (certCheck.valid && certCheck.payload.moderatorSpki === packet.publicSpki) {
-              peerObj.profile.isModerator = true;
-              peerObj.profile.moderatorRole = 'delegated';
-              peerObj.profile.moderatorCertificate = packet.moderatorCertificate;
-            }
-          }
-        }
-        this.onProfileUpdate(peerObj.profile, oldName);
+      const oldName = peerObj.profile.nickname;
+      peerObj.profile.nickname = sanitizeNickname(packet.nickname) || oldName;
+
+      if (packet.type === 'HELLO_HANDSHAKE') {
+        await this._processHandshake(packet, fromPeerId, peerObj);
       }
+      this.onProfileUpdate(peerObj.profile, oldName);
       return;
     }
 
     // 3. Orden administrativa de borrado de mensaje
     if (packet.type === 'ADMIN_DELETE_MESSAGE') {
+      if (!this._allowControlPacket(fromPeerId)) return;
       const { messageId, adminSpki, signature, timestamp, moderatorCertificate } = packet;
+
+      if (packet.roomId !== this.roomId || typeof messageId !== 'string' ||
+          typeof adminSpki !== 'string' || typeof signature !== 'string' ||
+          !isFreshTimestamp(timestamp, ADMIN_ACTION_MAX_SKEW_MS)) {
+        return;
+      }
 
       // 1. Verificar autorización legítima de moderador (Raíz o Delegado)
       const auth = await isAuthorizedModerator(
@@ -592,8 +696,12 @@ export class P2PMeshRoom {
         return;
       }
 
-      // 2. Verificar firma del payload de acción
-      const isValid = await verifyPayload(adminSpki, { type: 'ADMIN_DELETE_MESSAGE', messageId, timestamp }, signature);
+      // 2. Verificar firma del payload de acción (ligado a sala + frescura: anti-replay)
+      const isValid = await verifyPayload(
+        adminSpki,
+        { type: 'ADMIN_DELETE_MESSAGE', roomId: this.roomId, messageId, timestamp },
+        signature
+      );
       if (isValid) {
         this.onMessageDeleted(messageId);
       }
@@ -602,7 +710,14 @@ export class P2PMeshRoom {
 
     // 4. Orden administrativa de expulsión de sala (KICK)
     if (packet.type === 'ADMIN_KICK') {
+      if (!this._allowControlPacket(fromPeerId)) return;
       const { targetPeerId, reason, adminSpki, signature, timestamp, moderatorCertificate } = packet;
+
+      if (packet.roomId !== this.roomId || typeof targetPeerId !== 'string' ||
+          typeof adminSpki !== 'string' || typeof signature !== 'string' ||
+          !isFreshTimestamp(timestamp, ADMIN_ACTION_MAX_SKEW_MS)) {
+        return;
+      }
 
       // 1. Verificar autorización legítima de moderador (Raíz o Delegado)
       const auth = await isAuthorizedModerator(
@@ -617,12 +732,16 @@ export class P2PMeshRoom {
         return;
       }
 
-      // 2. Verificar firma de la orden de expulsión
-      const isValid = await verifyPayload(adminSpki, { type: 'ADMIN_KICK', targetPeerId, reason, timestamp }, signature);
+      // 2. Verificar firma de la orden de expulsión (ligada a sala + frescura: anti-replay)
+      const isValid = await verifyPayload(
+        adminSpki,
+        { type: 'ADMIN_KICK', roomId: this.roomId, targetPeerId, reason: reason ?? '', timestamp },
+        signature
+      );
       if (isValid) {
         if (targetPeerId === this.peerId) {
           this.destroy();
-          this.onKicked(reason || 'Has sido expulsado de la sala por un moderador.');
+          this.onKicked(String(reason || 'Has sido expulsado de la sala por un moderador.').slice(0, 200));
         } else {
           this._handlePeerDisconnected(targetPeerId);
         }
@@ -632,23 +751,44 @@ export class P2PMeshRoom {
 
     // 5. Transferencia de archivos P2P (FileDrop con certificación de autoría)
     if (packet.type === 'FILE_START') {
-      // Prevención DoS: limitar a máximo 5 transferencias simultáneas
-      if (this.incomingFileTransfers.size >= 5) {
+      const { fileId, fileSize, totalChunks, fileHash } = packet;
+
+      // Validación estricta de metadatos: el emisor es no confiable
+      if (typeof fileId !== 'string' || !FILE_ID_REGEX.test(fileId)) return;
+      if (!Number.isInteger(fileSize) || fileSize < 0 || fileSize > MAX_FILE_SIZE) {
+        console.warn('[P2P FileDrop] Archivo rechazado por tamaño inválido o superior al máximo permitido (2 GB).');
+        return;
+      }
+      // El número de trozos debe ser coherente con el tamaño declarado (evita buffers sobredimensionados)
+      if (!Number.isInteger(totalChunks) || totalChunks !== Math.ceil(fileSize / FILE_CHUNK_SIZE)) return;
+      if (typeof fileHash !== 'string' || !/^[0-9a-f]{64}$/.test(fileHash)) return;
+      if (this.incomingFileTransfers.has(fileId)) return; // no se puede pisar una transferencia en curso
+
+      // Prevención DoS: límite global y por peer de transferencias simultáneas
+      if (this.incomingFileTransfers.size >= MAX_CONCURRENT_TRANSFERS) {
         console.warn('[P2P FileDrop] Rechazando transferencia: límite de transferencias concurrentes alcanzado.');
         return;
       }
-
-      // Validar tamaño máximo de archivo (2 GB)
-      if (packet.fileSize > 2 * 1024 * 1024 * 1024 || packet.totalChunks > 200000) {
-        console.warn('[P2P FileDrop] Archivo rechazado por exceder el tamaño máximo permitido (2 GB).');
-        return;
+      let fromThisPeer = 0;
+      for (const t of this.incomingFileTransfers.values()) {
+        if (t.fromPeerId === fromPeerId) fromThisPeer++;
       }
+      if (fromThisPeer >= MAX_TRANSFERS_PER_PEER) return;
 
-      this.incomingFileTransfers.set(packet.fileId, {
-        meta: packet,
+      this.incomingFileTransfers.set(fileId, {
+        fromPeerId, // las transferencias quedan ligadas al peer que las inició
+        meta: {
+          fileId,
+          fileName: sanitizeFileName(packet.fileName),
+          fileSize,
+          mimeType: typeof packet.mimeType === 'string' ? packet.mimeType.slice(0, 100) : 'application/octet-stream',
+          fileHash,
+          authorshipCertificate: packet.authorshipCertificate || null,
+          timestamp: Number.isFinite(packet.timestamp) ? packet.timestamp : Date.now()
+        },
         receivedChunks: new Map(),
-        totalChunks: packet.totalChunks,
-        fileHash: packet.fileHash,
+        totalChunks,
+        fileHash,
         lastActivity: Date.now()
       });
       return;
@@ -656,12 +796,22 @@ export class P2PMeshRoom {
 
     if (packet.type === 'FILE_CHUNK') {
       const transfer = this.incomingFileTransfers.get(packet.fileId);
-      if (transfer) {
-        // Validar índice de chunk dentro del rango esperado
-        if (typeof packet.chunkIndex !== 'number' || packet.chunkIndex < 0 || packet.chunkIndex >= transfer.totalChunks) {
+      if (transfer && transfer.fromPeerId === fromPeerId) {
+        // Validar índice de chunk dentro del rango esperado y tamaño del fragmento
+        if (!Number.isInteger(packet.chunkIndex) || packet.chunkIndex < 0 || packet.chunkIndex >= transfer.totalChunks) {
           return;
         }
-        transfer.receivedChunks.set(packet.chunkIndex, base64ToBuffer(packet.data));
+        if (typeof packet.data !== 'string' || packet.data.length > MAX_CHUNK_BASE64_LENGTH) return;
+
+        let decoded;
+        try {
+          decoded = base64ToBuffer(packet.data);
+        } catch {
+          return;
+        }
+        if (decoded.byteLength > FILE_CHUNK_SIZE) return;
+
+        transfer.receivedChunks.set(packet.chunkIndex, decoded);
         transfer.lastActivity = Date.now();
         this.onFileProgress(packet.fileId, transfer.receivedChunks.size / transfer.totalChunks);
       }
@@ -670,47 +820,164 @@ export class P2PMeshRoom {
 
     if (packet.type === 'FILE_END') {
       const transfer = this.incomingFileTransfers.get(packet.fileId);
-      if (transfer && transfer.receivedChunks.size === transfer.totalChunks) {
-        // En vez de un Uint8Array contiguo gigante que duplica el consumo de RAM en archivos 3D,
-        // pasamos el array de ArrayBuffers directamente a Blob
-        const chunks = [];
-        for (let i = 0; i < transfer.totalChunks; i++) {
-          chunks.push(transfer.receivedChunks.get(i));
-        }
+      if (!transfer || transfer.fromPeerId !== fromPeerId) return;
 
-        const blob = new Blob(chunks, { type: transfer.meta.mimeType || 'application/octet-stream' });
-        // Liberar mapa de fragmentos inmediatamente para aliviar el heap
+      if (transfer.receivedChunks.size !== transfer.totalChunks) {
+        // El emisor declara fin pero faltan trozos: transferencia inservible, se libera memoria ya
+        console.warn(`[P2P FileDrop] Transferencia incompleta descartada: ${packet.fileId}`);
         transfer.receivedChunks.clear();
-
-        const arrayBuffer = await blob.arrayBuffer();
-        const actualHash = await computeFileHash(arrayBuffer);
-        const isValidHash = (actualHash === transfer.meta.fileHash);
-
-        let authorshipInfo = { valid: false };
-        if (transfer.meta.authorshipCertificate) {
-          authorshipInfo = await verifyFileAuthorshipCertificate(transfer.meta.authorshipCertificate, transfer.meta.fileHash);
-        }
-
-        const blobUrl = URL.createObjectURL(blob);
-
-        this.onFileReceived({
-          fileId: transfer.meta.fileId,
-          fileName: transfer.meta.fileName,
-          fileSize: transfer.meta.fileSize,
-          mimeType: transfer.meta.mimeType,
-          fileHash: transfer.meta.fileHash,
-          blobUrl,
-          isValidHash,
-          authorship: authorshipInfo,
-          fromPeerId,
-          fromNickname: peerObj?.profile.nickname || `Peer#${fromPeerId.slice(0, 4)}`,
-          timestamp: transfer.meta.timestamp || Date.now()
-        });
-
         this.incomingFileTransfers.delete(packet.fileId);
+        return;
       }
+
+      // En vez de un Uint8Array contiguo gigante que duplica el consumo de RAM en archivos 3D,
+      // pasamos el array de ArrayBuffers directamente a Blob
+      const chunks = [];
+      let receivedBytes = 0;
+      for (let i = 0; i < transfer.totalChunks; i++) {
+        const chunk = transfer.receivedChunks.get(i);
+        receivedBytes += chunk.byteLength;
+        chunks.push(chunk);
+      }
+
+      // Se libera ya la transferencia: evita doble procesamiento por FILE_END repetidos
+      this.incomingFileTransfers.delete(packet.fileId);
+
+      if (receivedBytes !== transfer.meta.fileSize) {
+        console.warn(`[P2P FileDrop] Tamaño recibido no coincide con el declarado: ${packet.fileId}`);
+        transfer.receivedChunks.clear();
+        return;
+      }
+
+      // El mimeType lo declara el emisor (no confiable): se fuerza un tipo binario neutro para que el
+      // navegador jamás interprete el blob como HTML/SVG/JS (XSS por blob: de mismo origen).
+      const blob = new Blob(chunks, { type: 'application/octet-stream' });
+      // Liberar mapa de fragmentos inmediatamente para aliviar el heap
+      transfer.receivedChunks.clear();
+
+      const arrayBuffer = await blob.arrayBuffer();
+      const actualHash = await computeFileHash(arrayBuffer);
+      const isValidHash = (actualHash === transfer.meta.fileHash);
+
+      let authorshipInfo = { valid: false };
+      if (transfer.meta.authorshipCertificate) {
+        authorshipInfo = await verifyFileAuthorshipCertificate(transfer.meta.authorshipCertificate, transfer.meta.fileHash);
+      }
+
+      // Si la sala se destruyó durante la verificación asíncrona no se crea ningún blob URL huérfano
+      if (this.isDestroyed) return;
+
+      const blobUrl = URL.createObjectURL(blob);
+
+      this.onFileReceived({
+        fileId: transfer.meta.fileId,
+        fileName: transfer.meta.fileName,
+        fileSize: transfer.meta.fileSize,
+        mimeType: transfer.meta.mimeType,
+        fileHash: transfer.meta.fileHash,
+        blobUrl,
+        isValidHash,
+        authorship: authorshipInfo,
+        fromPeerId,
+        fromNickname: peerObj.profile.nickname || `Peer#${fromPeerId.slice(0, 4)}`,
+        timestamp: transfer.meta.timestamp
+      });
       return;
     }
+  }
+
+  /**
+   * Limita el ritmo de paquetes de control (perfil, handshake, órdenes de moderación) por peer.
+   * Cada uno puede implicar verificaciones criptográficas costosas (vector de DoS de CPU).
+   * @private
+   * @returns {boolean} true si el paquete puede procesarse
+   */
+  _allowControlPacket(peerId) {
+    const now = Date.now();
+    const recent = (this.peerControlTimestamps.get(peerId) || []).filter(t => now - t < CONTROL_RATE_WINDOW_MS);
+    if (recent.length >= CONTROL_RATE_MAX) {
+      console.warn(`[P2P] Paquetes de control limitados por exceso de frecuencia de ${peerId}`);
+      return false;
+    }
+    recent.push(now);
+    this.peerControlTimestamps.set(peerId, recent);
+    return true;
+  }
+
+  /**
+   * Procesa el handshake de un peer: valida que su clave pública corresponde a su identidad,
+   * exige prueba de posesión de la clave privada y solo entonces reconoce roles de moderación.
+   * @private
+   */
+  async _processHandshake(packet, fromPeerId, peerObj) {
+    const spki = packet.publicSpki;
+    if (typeof spki !== 'string' || spki.length === 0 || spki.length > MAX_SPKI_LENGTH) return;
+
+    // La clave presentada debe corresponder a la identidad (huella) de este canal
+    let fp;
+    try {
+      fp = await getFingerprint(spki);
+    } catch {
+      return;
+    }
+    if (fp !== fromPeerId) return;
+
+    // Prueba de posesión: firma fresca ligada a (sala, emisor, receptor). Sin ella cualquiera podría
+    // presentar la clave pública (que es pública) de un administrador raíz y aparentar ser moderador.
+    if (typeof packet.signature !== 'string' || !isFreshTimestamp(packet.timestamp, HANDSHAKE_MAX_SKEW_MS)) return;
+    const proofOk = await verifyPayload(
+      spki,
+      { type: 'HELLO_HANDSHAKE', roomId: this.roomId, from: fromPeerId, to: this.peerId, timestamp: packet.timestamp },
+      packet.signature
+    );
+    if (!proofOk) return;
+
+    peerObj.profile.publicSpki = spki;
+
+    // Verificar si es Administrador Raíz directo
+    if (this.trustedAdminFingerprints.includes(fp)) {
+      peerObj.profile.isModerator = true;
+      peerObj.profile.moderatorRole = 'root';
+    } else if (packet.moderatorCertificate) {
+      // Verificar si presenta un Certificado de Delegación válido (emitido a SU clave pública)
+      const certCheck = await verifyModeratorCertificate(packet.moderatorCertificate, this.trustedAdminFingerprints);
+      if (certCheck.valid && certCheck.payload.moderatorPublicSpki === spki) {
+        peerObj.profile.isModerator = true;
+        peerObj.profile.moderatorRole = 'delegated';
+        peerObj.profile.moderatorCertificate = packet.moderatorCertificate;
+      }
+    }
+  }
+
+  /**
+   * Envía el handshake firmado (con prueba de posesión de clave) por el canal indicado.
+   * @private
+   */
+  async _sendHandshake(channel, remotePeerId) {
+    const timestamp = Date.now();
+    let signature = null;
+    try {
+      signature = await signPayload(this.identity.privateKey, {
+        type: 'HELLO_HANDSHAKE',
+        roomId: this.roomId,
+        from: this.peerId,
+        to: remotePeerId,
+        timestamp
+      });
+    } catch (err) {
+      console.warn('[P2P] No se pudo firmar el handshake:', err);
+    }
+    if (this.isDestroyed) return;
+
+    // Le enviamos nuestro perfil actualizado (con credencial de moderador si existe)
+    this._sendDirect(channel, {
+      type: 'HELLO_HANDSHAKE',
+      nickname: this.identity.nickname,
+      publicSpki: this.identity.publicSpki,
+      moderatorCertificate: this.moderatorCertificate,
+      timestamp,
+      signature
+    });
   }
 
   /**
@@ -720,10 +987,22 @@ export class P2PMeshRoom {
   _handlePeerDisconnected(peerId) {
     const peerObj = this.peers.get(peerId);
     if (peerObj) {
-      try {
-        peerObj.peerConnection?.close();
-      } catch {}
       this.peers.delete(peerId);
+      this._teardownPeer(peerObj);
+
+      this.peerMessageTimestamps.delete(peerId);
+      this.peerControlTimestamps.delete(peerId);
+      this.pendingIceCandidates.delete(peerId);
+
+      // Descartar transferencias de archivo incompletas del peer que se fue
+      for (const [fileId, transfer] of this.incomingFileTransfers.entries()) {
+        if (transfer.fromPeerId === peerId) {
+          transfer.receivedChunks?.clear();
+          this.incomingFileTransfers.delete(fileId);
+        }
+      }
+
+      if (this.isDestroyed) return;
       this.onPeerLeave(peerObj.profile);
 
       if (this.peers.size === 0) {
@@ -738,9 +1017,10 @@ export class P2PMeshRoom {
    * Envía un mensaje de chat a todos los compañeros conectados en la sala.
    * El mensaje se firma criptográficamente antes de transmitirse.
    * @param {string} text
+   * @param {Object} [torbox=null] - Metadatos opcionales de Torbox DDL Card
    * @returns {Promise<Object>} Datos del mensaje enviado
    */
-  async sendMessage(text) {
+  async sendMessage(text, torbox = null) {
     const messageData = {
       id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
       roomId: this.roomId,
@@ -749,6 +1029,10 @@ export class P2PMeshRoom {
       text: text.trim(),
       timestamp: Date.now()
     };
+
+    if (torbox) {
+      messageData.torbox = torbox;
+    }
 
     // Firma con la clave privada local
     const signature = await signPayload(this.identity.privateKey, messageData);
@@ -814,9 +1098,15 @@ export class P2PMeshRoom {
    */
   async broadcastAdminDelete(messageId, adminPrivateKey, adminPublicSpki) {
     const timestamp = Date.now();
-    const signature = await signPayload(adminPrivateKey, { type: 'ADMIN_DELETE_MESSAGE', messageId, timestamp });
+    const signature = await signPayload(adminPrivateKey, {
+      type: 'ADMIN_DELETE_MESSAGE',
+      roomId: this.roomId,
+      messageId,
+      timestamp
+    });
     const packet = {
       type: 'ADMIN_DELETE_MESSAGE',
+      roomId: this.roomId,
       messageId,
       adminSpki: adminPublicSpki,
       signature,
@@ -836,11 +1126,19 @@ export class P2PMeshRoom {
    */
   async broadcastAdminKick(targetPeerId, reason, adminPrivateKey, adminPublicSpki) {
     const timestamp = Date.now();
-    const signature = await signPayload(adminPrivateKey, { type: 'ADMIN_KICK', targetPeerId, reason, timestamp });
+    const safeReason = String(reason ?? '').slice(0, 200);
+    const signature = await signPayload(adminPrivateKey, {
+      type: 'ADMIN_KICK',
+      roomId: this.roomId,
+      targetPeerId,
+      reason: safeReason,
+      timestamp
+    });
     const packet = {
       type: 'ADMIN_KICK',
+      roomId: this.roomId,
       targetPeerId,
-      reason,
+      reason: safeReason,
       adminSpki: adminPublicSpki,
       signature,
       timestamp,
@@ -869,10 +1167,9 @@ export class P2PMeshRoom {
     );
 
     const fileId = `file_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-    const CHUNK_SIZE = 16 * 1024; // 16 KB por trozo
-    const totalChunks = Math.ceil(arrayBuffer.byteLength / CHUNK_SIZE);
+    const totalChunks = Math.ceil(arrayBuffer.byteLength / FILE_CHUNK_SIZE);
 
-    const safeFileName = file.name.replace(/[\\/:\*\?"<>\|]/g, '_').replace(/\.\.+/g, '.').trim().slice(0, 120);
+    const safeFileName = sanitizeFileName(file.name);
 
     // 1. Emitir metadatos y certificado
     this._broadcastPacket({
@@ -890,9 +1187,12 @@ export class P2PMeshRoom {
     });
 
     // 2. Transmitir trozos con control de contrapresión (Backpressure)
+    const abandonedPeers = new Set();
     for (let i = 0; i < totalChunks; i++) {
-      const start = i * CHUNK_SIZE;
-      const end = Math.min(start + CHUNK_SIZE, arrayBuffer.byteLength);
+      if (this.isDestroyed) throw new Error('La sala se cerró durante la transferencia');
+
+      const start = i * FILE_CHUNK_SIZE;
+      const end = Math.min(start + FILE_CHUNK_SIZE, arrayBuffer.byteLength);
       const chunkBuf = arrayBuffer.slice(start, end);
 
       const packet = {
@@ -904,12 +1204,21 @@ export class P2PMeshRoom {
 
       const packetJson = JSON.stringify(packet);
 
-      for (const [_, peerObj] of this.peers.entries()) {
+      for (const [peerId, peerObj] of this.peers.entries()) {
+        if (abandonedPeers.has(peerId)) continue;
         if (peerObj.dataChannel && peerObj.dataChannel.readyState === 'open') {
-          await this._waitForBackpressure(peerObj.dataChannel);
+          const canSend = await this._waitForBackpressure(peerObj.dataChannel);
+          if (!canSend) {
+            // Canal cerrado o atascado: se abandona a este peer (recibiría un archivo incompleto)
+            abandonedPeers.add(peerId);
+            console.warn(`[P2P FileDrop] Abandonando envío a ${peerId}: canal cerrado o saturado.`);
+            continue;
+          }
           try {
             peerObj.dataChannel.send(packetJson);
-          } catch {}
+          } catch {
+            abandonedPeers.add(peerId);
+          }
         }
       }
     }
@@ -948,20 +1257,38 @@ export class P2PMeshRoom {
   }
 
   /**
-   * Control de contrapresión (Backpressure): espera si el búfer del canal supera 64KB.
+   * Control de contrapresión (Backpressure): espera a que el búfer del canal baje del umbral bajo.
    * @private
+   * @param {RTCDataChannel} channel
+   * @param {number} [timeoutMs=10000] - Tiempo máximo de espera antes de dar el canal por atascado
+   * @returns {Promise<boolean>} true si se puede seguir enviando; false si el canal se cerró o se atascó
    */
-  async _waitForBackpressure(channel) {
-    if (!channel || channel.bufferedAmount <= 64 * 1024) return;
+  _waitForBackpressure(channel, timeoutMs = BACKPRESSURE_TIMEOUT_MS) {
+    if (!channel || channel.readyState !== 'open') return Promise.resolve(false);
+    if (channel.bufferedAmount <= BACKPRESSURE_HIGH) return Promise.resolve(true);
 
     return new Promise(resolve => {
-      channel.bufferedAmountLowThreshold = 16 * 1024;
-      const onLow = () => {
+      let timer = null;
+
+      const cleanup = () => {
+        clearTimeout(timer);
         channel.removeEventListener('bufferedamountlow', onLow);
-        resolve();
+        channel.removeEventListener('close', onClosed);
+        channel.removeEventListener('error', onClosed);
       };
+      const onLow = () => { cleanup(); resolve(true); };
+      const onClosed = () => { cleanup(); resolve(false); };
+
+      channel.bufferedAmountLowThreshold = BACKPRESSURE_LOW;
       channel.addEventListener('bufferedamountlow', onLow);
-      setTimeout(onLow, 150);
+      channel.addEventListener('close', onClosed);
+      channel.addEventListener('error', onClosed);
+
+      // Salvaguarda ante eventos perdidos: solo continuar si el búfer realmente se ha vaciado
+      timer = setTimeout(() => {
+        cleanup();
+        resolve(channel.readyState === 'open' && channel.bufferedAmount <= BACKPRESSURE_HIGH);
+      }, timeoutMs);
     });
   }
 
@@ -981,11 +1308,22 @@ export class P2PMeshRoom {
    * Cierra todas las conexiones y destruye la sala.
    */
   destroy() {
+    if (this.isDestroyed) return;
     this.isDestroyed = true;
 
     if (this._transferCleanupInterval) {
       clearInterval(this._transferCleanupInterval);
       this._transferCleanupInterval = null;
+    }
+
+    if (this._readyTimer) {
+      clearTimeout(this._readyTimer);
+      this._readyTimer = null;
+    }
+
+    if (this._cloudflareReconnectTimer) {
+      clearTimeout(this._cloudflareReconnectTimer);
+      this._cloudflareReconnectTimer = null;
     }
 
     for (const [_, timer] of this._nostrReconnectTimers.entries()) {
@@ -1000,11 +1338,14 @@ export class P2PMeshRoom {
 
     if (this.broadcastChannel) {
       try {
+        this.broadcastChannel.onmessage = null;
         this.broadcastChannel.close();
       } catch {}
+      this.broadcastChannel = null;
     }
 
     if (this.cloudflareSocket) {
+      this._detachSocket(this.cloudflareSocket);
       try {
         this.cloudflareSocket.close();
       } catch {}
@@ -1012,6 +1353,7 @@ export class P2PMeshRoom {
     }
 
     for (const ws of this.nostrSockets) {
+      this._detachSocket(ws);
       try {
         ws.close();
       } catch {}
@@ -1019,11 +1361,52 @@ export class P2PMeshRoom {
     this.nostrSockets = [];
 
     for (const [_, peerObj] of this.peers.entries()) {
-      try {
-        peerObj.dataChannel?.close();
-        peerObj.peerConnection?.close();
-      } catch {}
+      this._teardownPeer(peerObj);
     }
     this.peers.clear();
+    this.peerMessageTimestamps.clear();
+    this.peerControlTimestamps.clear();
+    this.pendingIceCandidates.clear();
+    this.seenMessageIds.clear();
+  }
+
+  /**
+   * Quita los handlers de un WebSocket para soltar referencias (evita fugas y callbacks tardíos).
+   * @private
+   */
+  _detachSocket(ws) {
+    try {
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onclose = null;
+      ws.onerror = null;
+    } catch {}
+  }
+
+  /**
+   * Cierra DataChannel + RTCPeerConnection de un peer y desengancha sus handlers.
+   * @private
+   */
+  _teardownPeer(peerObj) {
+    if (!peerObj) return;
+    const channel = peerObj.dataChannel;
+    if (channel) {
+      try {
+        channel.onopen = null;
+        channel.onclose = null;
+        channel.onmessage = null;
+        channel.onerror = null;
+        channel.close();
+      } catch {}
+    }
+    const pc = peerObj.peerConnection;
+    if (pc) {
+      try {
+        pc.onicecandidate = null;
+        pc.onconnectionstatechange = null;
+        pc.ondatachannel = null;
+        pc.close();
+      } catch {}
+    }
   }
 }
