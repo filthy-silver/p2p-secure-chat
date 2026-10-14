@@ -1,0 +1,17 @@
+node_modules
+node_modules/**
+**/node_modules/**
+.git
+.git/**
+.wrangler
+.wrangler/**
+worker
+worker/**
+tests
+tests/**
+.dev.vars
+.dev.vars.example
+wrangler.toml
+package.json
+package-lock.json
+*.md
