@@ -6,6 +6,7 @@
 import { onRequest as handleChatInvitesRequest } from '../functions/api/chat-invites.js';
 import { onRequest as handleChatVaultRequest } from '../functions/api/chat-vault.js';
 import { onRequest as handleChatSignalRequest } from '../functions/api/chat-signal.js';
+import { onRequest as handleChatMessagesRequest } from '../functions/api/chat-messages.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -24,6 +25,11 @@ export default {
     // Endpoint de Señalización WebRTC (WebSockets y HTTP)
     if (url.pathname === '/api/chat/signal' || url.pathname.startsWith('/api/chat/signal/')) {
       return handleChatSignalRequest({ request, env, ctx });
+    }
+
+    // Endpoint de Búfer Efímero de Mensajes con TTL (Cloudflare KV)
+    if (url.pathname === '/api/chat/messages' || url.pathname.startsWith('/api/chat/messages/')) {
+      return handleChatMessagesRequest({ request, env, ctx });
     }
 
     // Health check

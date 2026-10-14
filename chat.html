@@ -41,6 +41,15 @@
           <span>Salas</span>
         </button>
         <span class="badge-peers" id="peers-count-badge">1 en línea</span>
+        <div class="retention-selector-wrap" title="Retención efímera de mensajes en el servidor antes de autodestruirse">
+          <label for="room-retention-select" class="visually-hidden">Retención de sala</label>
+          <select id="room-retention-select" class="room-retention-select">
+            <option value="0">0h (En vivo)</option>
+            <option value="6">6h (Buffer)</option>
+            <option value="24" selected>24h (Buffer)</option>
+            <option value="72">72h (Buffer)</option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -366,6 +375,67 @@
           Guardar Ajustes
         </button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Muro de Acceso a la Comunidad (Gate) -->
+<div class="community-gate-overlay" id="community-gate-overlay" style="display: none;">
+  <div class="community-gate-card">
+    <div class="gate-icon-badge">
+      <svg viewBox="0 0 24 24" width="36" height="36" aria-hidden="true">
+        <path fill="currentColor" d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+      </svg>
+    </div>
+    <h2>Acceso Exclusivo a la Comunidad</h2>
+    <p class="gate-subtitle">
+      El chat de CFGS 3D opera sobre una red P2P cifrada de extremo a extremo. Para ingresar necesitas canjear un código de invitación oficial o restaurar tu identidad criptográfica.
+    </p>
+
+    <div class="gate-form-wrap">
+      <label for="gate-invite-input" class="visually-hidden">Código de invitación</label>
+      <input
+        type="text"
+        id="gate-invite-input"
+        class="gate-input"
+        placeholder="Código (INV-XXXX-XXXX) o Token..."
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button type="button" id="btn-gate-claim" class="btn-gate-claim">
+        <span>Desbloquear Acceso</span>
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+          <path fill="currentColor" d="M5 13h11.86l-5.43 5.43 1.42 1.42L21.14 12l-8.29-7.85-1.42 1.42L16.86 11H5v2z"/>
+        </svg>
+      </button>
+    </div>
+
+    <div id="gate-status-msg" class="gate-status-msg" style="display: none;"></div>
+
+    <div class="gate-actions-row">
+      <button type="button" id="btn-gate-restore" class="btn-gate-restore">
+        Restaurar identidad con 12 palabras de seguridad
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Lightbox de Imágenes y Renders -->
+<div class="image-lightbox-modal" id="image-lightbox-modal" role="dialog" aria-modal="true" aria-label="Visualizador de captura o render 3D" style="display: none;">
+  <div class="lightbox-backdrop" id="lightbox-backdrop"></div>
+  <div class="lightbox-content">
+    <div class="lightbox-toolbar">
+      <span class="lightbox-caption" id="lightbox-caption">Captura de pantalla</span>
+      <div class="lightbox-buttons">
+        <a id="lightbox-download" class="btn-lightbox-action" download="render-3d.png" href="#" title="Descargar imagen en alta resolución">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+          <span>Descargar</span>
+        </a>
+        <button type="button" id="btn-close-lightbox" class="btn-lightbox-close" aria-label="Cerrar visualizador">&times;</button>
+      </div>
+    </div>
+    <div class="lightbox-img-wrap">
+      <img id="lightbox-img" src="" alt="Captura o render ampliado" />
     </div>
   </div>
 </div>

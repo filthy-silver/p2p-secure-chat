@@ -352,15 +352,15 @@ describe('chat/crypto.js · Motor Criptográfico Autosoberano', () => {
     assert.equal(await verifyPayload(publicSpki, transported, signature), true);
   });
 
-  it('los tokens de invitación admiten emojis/Unicode y detectan huella falsificada o emisor no confiable', async () => {
+  it('los tokens de invitación admiten caracteres internacionales Unicode y detectan huella falsificada o emisor no confiable', async () => {
     const adminKey = await generateIdentityKeyPair();
     const { publicSpki } = await exportKeyPair(adminKey);
     const adminFp = await getFingerprint(publicSpki);
 
-    const token = await generateInviteToken(adminKey.privateKey, publicSpki, adminFp, 'María 🎮', 1);
+    const token = await generateInviteToken(adminKey.privateKey, publicSpki, adminFp, 'María Peña & José (CFGS 3D)', 1);
     const ok = await verifyInviteToken(token, [adminFp]);
     assert.equal(ok.valid, true);
-    assert.equal(ok.payload.invitedLabel, 'María 🎮');
+    assert.equal(ok.payload.invitedLabel, 'María Peña & José (CFGS 3D)');
 
     // Emisor no incluido en la lista de confianza
     const untrusted = await verifyInviteToken(token, ['00000000']);

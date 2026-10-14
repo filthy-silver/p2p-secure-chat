@@ -169,6 +169,24 @@ export function initElements() {
   elements.btnConfirmSwitchRoom = document.getElementById('btn-confirm-switch-room');
   elements.recentRoomsList = document.getElementById('recent-rooms-list');
   elements.officialRoomsList = document.getElementById('official-rooms-list');
+
+  // Retención efímera de mensajes
+  elements.roomRetentionSelect = document.getElementById('room-retention-select');
+
+  // Muro de Acceso a la Comunidad (Gate)
+  elements.communityGateOverlay = document.getElementById('community-gate-overlay');
+  elements.gateInviteInput = document.getElementById('gate-invite-input');
+  elements.btnGateClaim = document.getElementById('btn-gate-claim');
+  elements.gateStatusMsg = document.getElementById('gate-status-msg');
+  elements.btnGateRestore = document.getElementById('btn-gate-restore');
+
+  // Lightbox de imágenes y renders
+  elements.imageLightboxModal = document.getElementById('image-lightbox-modal');
+  elements.lightboxImg = document.getElementById('lightbox-img');
+  elements.lightboxCaption = document.getElementById('lightbox-caption');
+  elements.lightboxDownload = document.getElementById('lightbox-download');
+  elements.btnCloseLightbox = document.getElementById('btn-close-lightbox');
+  elements.lightboxBackdrop = document.getElementById('lightbox-backdrop');
 }
 
 // Inicialización temprana de elementos en caso de que el DOM ya exista
@@ -196,10 +214,147 @@ export async function initChatApp() {
     console.error('[Chat] Error verificando invitación:', err);
   }
 
+  // Comprobar muro de acceso a la comunidad (Gate)
+  if (!isCommunityAccessGranted()) {
+    showCommunityGate();
+    return;
+  }
+
   try {
     setupRoomFromUrl();
   } catch (err) {
     console.error('[Chat] Error conectando a la sala:', err);
+  }
+}
+
+/**
+ * Comprueba si el usuario tiene acceso concedido a la comunidad.
+ * @returns {boolean}
+ */
+export function isCommunityAccessGranted() {
+  if (state.identity && state.identity.fingerprint.toLowerCase() === GENESIS_ADMIN_ROOT_FINGERPRINT.toLowerCase()) {
+    localStorage.setItem('p2p_community_access_granted', 'true');
+    return true;
+  }
+  return localStorage.getItem('p2p_community_access_granted') === 'true';
+}
+
+/**
+ * Muestra el muro de acceso (Gate) bloqueando el chat.
+ */
+export function showCommunityGate() {
+  if (elements.communityGateOverlay) {
+    elements.communityGateOverlay.style.display = 'flex';
+  }
+  if (elements.gateInviteInput) {
+    elements.gateInviteInput.focus();
+  }
+}
+
+/**
+ * Oculta el muro de acceso (Gate).
+ */
+export function hideCommunityGate() {
+  if (elements.communityGateOverlay) {
+    elements.communityGateOverlay.style.display = 'none';
+  }
+}
+
+/**
+ * Muestra un aviso de estado en el muro de acceso.
+ * @param {string} message
+ * @param {boolean} isSuccess
+ */
+function showGateStatus(message, isSuccess = false) {
+  if (!elements.gateStatusMsg) return;
+  elements.gateStatusMsg.textContent = message;
+  elements.gateStatusMsg.className = `gate-status-msg ${isSuccess ? 'success' : 'error'}`;
+  elements.gateStatusMsg.style.display = 'block';
+}
+
+/**
+ * Procesa el canje del código o token en el muro de acceso.
+ */
+async function handleClaimGateCode() {
+  const inputVal = (elements.gateInviteInput?.value || '').trim();
+  if (!inputVal) {
+    showGateStatus('Por favor, introduce un código o token de invitación.');
+    return;
+  }
+
+  if (elements.btnGateClaim) {
+    elements.btnGateClaim.disabled = true;
+    elements.btnGateClaim.textContent = 'Verificando...';
+  }
+
+  try {
+    // 1. Código alfanumérico firmado en servidor (INV-XXXX o GEN-XXXX)
+    if (inputVal.toUpperCase().startsWith('INV-') || inputVal.toUpperCase().startsWith('GEN-')) {
+      const code = inputVal.toUpperCase();
+      const timestamp = Date.now();
+      const signature = await signPayload(
+        state.identity.privateKey,
+        { action: 'claim', code, userFingerprint: state.identity.fingerprint, timestamp }
+      );
+
+      const res = await fetch('/api/chat/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'claim',
+          code,
+          userFingerprint: state.identity.fingerprint,
+          userPublicSpki: state.identity.publicSpki,
+          nickname: state.identity.nickname,
+          timestamp,
+          signature
+        })
+      });
+
+      const data = await res.json();
+      if (!data.success) {
+        showGateStatus(data.error || 'Código de invitación no válido o ya agotado.');
+        return;
+      }
+
+      localStorage.setItem('p2p_community_access_granted', 'true');
+      showGateStatus('Acceso concedido con éxito. Entrando al chat...', true);
+      setTimeout(() => {
+        hideCommunityGate();
+        setupRoomFromUrl();
+        appendSystemMessage('Bienvenido a la comunidad CFGS 3D. Tu código de invitación ha sido verificado.');
+      }, 600);
+      return;
+    }
+
+    // 2. Token de invitación autosoberano (JWT / Base64)
+    const tokenResult = await verifyInviteToken(inputVal);
+    if (tokenResult.valid) {
+      localStorage.setItem('p2p_community_access_granted', 'true');
+      showGateStatus('Token verificado con éxito. Entrando al chat...', true);
+      setTimeout(() => {
+        hideCommunityGate();
+        setupRoomFromUrl();
+        appendSystemMessage('Bienvenido. Tu token de invitación oficial ha sido verificado.');
+      }, 600);
+      return;
+    }
+
+    showGateStatus(`Token no válido: ${tokenResult.reason || 'formato incorrecto'}`);
+
+  } catch (err) {
+    console.error('[Gate] Error verificando invitación:', err);
+    showGateStatus(`Error de verificación: ${err.message}`);
+  } finally {
+    if (elements.btnGateClaim) {
+      elements.btnGateClaim.disabled = false;
+      elements.btnGateClaim.innerHTML = `
+        <span>Desbloquear Acceso</span>
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+          <path fill="currentColor" d="M5 13h11.86l-5.43 5.43 1.42 1.42L21.14 12l-8.29-7.85-1.42 1.42L16.86 11H5v2z"/>
+        </svg>
+      `;
+    }
   }
 }
 
@@ -220,7 +375,7 @@ async function checkInviteUrlParam() {
     const result = await verifyInviteToken(inviteToken);
     if (result.valid) {
       localStorage.setItem('p2p_community_access_granted', 'true');
-      appendSystemMessage('¡Bienvenido! Tu token de invitación oficial ha sido verificado.');
+      appendSystemMessage('Bienvenido. Tu token de invitación oficial ha sido verificado.');
     } else {
       console.warn('[Invite] Token inválido:', result.reason);
       appendSystemMessage(`Aviso: El enlace de invitación presentado no es válido: ${result.reason}`);
@@ -283,6 +438,7 @@ async function setupUserIdentity() {
   if (state.identity && state.identity.fingerprint.toLowerCase() === GENESIS_ADMIN_ROOT_FINGERPRINT.toLowerCase()) {
     state.isAdmin = true;
     localStorage.setItem('p2p_chat_is_admin', 'true');
+    localStorage.setItem('p2p_community_access_granted', 'true');
     if (state.identity.nickname !== 'FilthySilver') {
       state.identity.nickname = 'FilthySilver';
       updateStoredNickname('FilthySilver');
@@ -401,6 +557,107 @@ export function getRoomIdFromLocation() {
 }
 
 /**
+ * Abre el visualizador Lightbox para inspeccionar capturas o renders 3D.
+ * @param {string} imgUrl
+ * @param {string} caption
+ */
+export function openLightbox(imgUrl, caption = 'Captura de pantalla') {
+  if (!elements.imageLightboxModal || !elements.lightboxImg) return;
+  elements.lightboxImg.src = imgUrl;
+  if (elements.lightboxCaption) {
+    elements.lightboxCaption.textContent = caption;
+  }
+  if (elements.lightboxDownload) {
+    elements.lightboxDownload.href = imgUrl;
+    elements.lightboxDownload.download = caption || 'captura-3d.png';
+  }
+  elements.imageLightboxModal.style.display = 'flex';
+}
+
+/**
+ * Cierra el visualizador Lightbox.
+ */
+export function closeLightbox() {
+  if (!elements.imageLightboxModal) return;
+  elements.imageLightboxModal.style.display = 'none';
+  if (elements.lightboxImg) {
+    elements.lightboxImg.src = '';
+  }
+}
+
+/**
+ * Guarda un mensaje en el búfer efímero de Cloudflare KV con TTL de autodestrucción.
+ * @param {string} roomId
+ * @param {Object} msg
+ * @param {number} retentionHours
+ */
+async function saveEphemeralMessageToServer(roomId, msg, retentionHours) {
+  if (!roomId || !msg || retentionHours <= 0) return;
+  try {
+    await fetch('/api/chat/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        roomId,
+        retentionHours,
+        message: {
+          id: msg.id,
+          senderPeerId: msg.senderPeerId || state.identity?.fingerprint,
+          fromNickname: msg.fromNickname || state.identity?.nickname,
+          text: msg.text,
+          timestamp: msg.timestamp || Date.now(),
+          publicSpki: msg.publicSpki || state.identity?.publicSpki,
+          signature: msg.signature,
+          isVerified: msg.isVerified,
+          torbox: msg.torbox || null
+        }
+      })
+    });
+  } catch (err) {
+    console.warn('[Messages] Error al persistir mensaje efímero:', err);
+  }
+}
+
+/**
+ * Consulta y carga los mensajes recientes almacenados en el búfer efímero de Cloudflare KV.
+ * @param {string} roomId
+ */
+async function loadServerRoomMessages(roomId) {
+  if (!roomId) return;
+  try {
+    const res = await fetch(`/api/chat/messages?roomId=${encodeURIComponent(roomId)}`);
+    const data = await res.json();
+    if (data.success && Array.isArray(data.messages) && data.messages.length > 0) {
+      const existingIds = new Set(
+        Array.from(elements.messagesFeed?.querySelectorAll('[data-msg-id]') || [])
+          .map(el => el.dataset.msgId)
+      );
+
+      let loadedCount = 0;
+      for (const msg of data.messages) {
+        if (!existingIds.has(String(msg.id))) {
+          const isMe = (msg.senderPeerId === state.identity?.fingerprint);
+          if (msg.torbox) {
+            appendTorboxCard(msg, isMe);
+          } else {
+            appendChatMessage(msg, isMe);
+          }
+          appendRoomHistory(roomId, { ...msg, isMe });
+          existingIds.add(String(msg.id));
+          loadedCount++;
+        }
+      }
+
+      if (loadedCount > 0) {
+        appendSystemMessage(`Sincronizados ${loadedCount} mensaje(s) del búfer efímero de #${roomId}.`);
+      }
+    }
+  } catch (err) {
+    console.warn('[Messages] Error cargando mensajes efímeros del servidor:', err);
+  }
+}
+
+/**
  * Conecta a la sala indicada en la URL.
  */
 function setupRoomFromUrl() {
@@ -428,8 +685,14 @@ function joinRoom(roomId) {
     elements.roomTitle.textContent = `#${roomId}`;
   }
 
+  if (elements.roomRetentionSelect) {
+    const savedRetention = localStorage.getItem(`room_retention_${roomId}`) || '24';
+    elements.roomRetentionSelect.value = savedRetention;
+  }
+
   updatePeersListUi();
   renderRoomHistory(roomId);
+  loadServerRoomMessages(roomId);
 
   // Instanciar motor de red P2P con soporte para moderación y FileDrop
   state.roomInstance = new P2PMeshRoom({
@@ -609,6 +872,15 @@ function appendFileBubble(fileData, isMe = false) {
         <div class="file-hash-tag">
           SHA-256: ${shortHash}
         </div>
+
+        ${(fileData.blobUrl && (/\.(png|jpe?g|webp|gif|svg|bmp)$/i.test(fileData.fileName) || (fileData.fileType && fileData.fileType.startsWith('image/')))) ? `
+          <div class="chat-image-preview-wrap" data-img-url="${escapeHtml(fileData.blobUrl)}" data-img-caption="${escapeHtml(fileData.fileName)}" title="Haz clic para ampliar la captura o render">
+            <img src="${escapeHtml(fileData.blobUrl)}" alt="${escapeHtml(fileData.fileName)}" class="chat-image-preview" loading="lazy" />
+            <div class="chat-image-overlay-zoom">
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14zm.5-7H9v2H7v1h2v2h1v-2h2V9h-2z"/></svg>
+            </div>
+          </div>
+        ` : ''}
 
         ${fileData.blobUrl ? `
           <a href="${escapeHtml(fileData.blobUrl)}" download="${escapeHtml(fileData.fileName)}" class="btn-download-file">
@@ -1165,11 +1437,72 @@ function bindEvents() {
         const sentMsg = await state.roomInstance.sendMessage(text);
         appendChatMessage(sentMsg, true);
         appendRoomHistory(state.currentRoomId, { ...sentMsg, isMe: true });
+
+        const retentionHours = elements.roomRetentionSelect ? parseInt(elements.roomRetentionSelect.value, 10) : 24;
+        if (retentionHours > 0) {
+          saveEphemeralMessageToServer(state.currentRoomId, sentMsg, retentionHours);
+        }
       } catch (err) {
         console.error('[Chat] Error al enviar mensaje:', err);
       }
     });
   }
+
+  // Cambio de retención efímera de la sala
+  elements.roomRetentionSelect?.addEventListener('change', (e) => {
+    localStorage.setItem(`room_retention_${state.currentRoomId}`, e.target.value);
+    const hrs = parseInt(e.target.value, 10);
+    appendSystemMessage(hrs > 0
+      ? `Retención efímera de sala establecida en ${hrs} horas.`
+      : 'Modo solo en vivo activo (0 horas de persistencia).');
+  });
+
+  // Acciones del Muro de Acceso (Gate)
+  elements.btnGateClaim?.addEventListener('click', handleClaimGateCode);
+  elements.gateInviteInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleClaimGateCode();
+    }
+  });
+  elements.btnGateRestore?.addEventListener('click', () => {
+    openModal(elements.identityModal || document.getElementById('identity-modal'));
+  });
+
+  // Controles del visor Lightbox de imágenes
+  elements.btnCloseLightbox?.addEventListener('click', closeLightbox);
+  elements.lightboxBackdrop?.addEventListener('click', closeLightbox);
+
+  // Apertura de imágenes al hacer clic en cualquier miniatura de chat
+  document.addEventListener('click', (e) => {
+    const previewWrap = e.target.closest('.chat-image-preview-wrap');
+    if (previewWrap) {
+      const url = previewWrap.dataset.imgUrl;
+      const caption = previewWrap.dataset.imgCaption;
+      if (url) openLightbox(url, caption);
+    }
+  });
+
+  // Portapapeles: Pegar capturas de pantalla o imágenes (Ctrl + V)
+  document.addEventListener('paste', async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items || !state.roomInstance) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type && item.type.startsWith('image/')) {
+        e.preventDefault();
+        const blob = item.getAsFile();
+        if (blob) {
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+          const ext = item.type.split('/')[1] || 'png';
+          const file = new File([blob], `captura-${timestamp}.${ext}`, { type: item.type });
+          await handleSendFile(file);
+          return;
+        }
+      }
+    }
+  });
 
   // Detección inteligente de enlaces magnet en el input
   elements.messageInput?.addEventListener('input', () => {
@@ -1455,7 +1788,8 @@ function bindEvents() {
         const parsed = JSON.parse(inputStr);
         if (parsed.privateJwk && parsed.publicSpki) {
           saveStoredIdentity(parsed);
-          alert('¡Identidad importada correctamente! Recargando...');
+          localStorage.setItem('p2p_community_access_granted', 'true');
+          alert('Identidad importada correctamente. Recargando...');
           window.location.reload();
           return;
         }
@@ -1489,6 +1823,7 @@ function bindEvents() {
           };
 
           saveStoredIdentity(restoredIdentity);
+          localStorage.setItem('p2p_community_access_granted', 'true');
           alert(`Identidad "${vaultData.nickname}" (0x${vaultData.fingerprint}) recuperada con éxito desde Cloudflare.`);
           window.location.reload();
           return;
@@ -1541,10 +1876,11 @@ function bindEvents() {
     });
   });
 
-  // Soporte para cerrar modales con la tecla Escape
+  // Soporte para cerrar modales y lightbox con la tecla Escape
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       closeAllModals();
+      closeLightbox();
     }
   });
 }
