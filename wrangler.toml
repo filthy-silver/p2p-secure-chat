@@ -1,0 +1,18 @@
+name = "p2p-secure-chat"
+main = "worker/index.js"
+compatibility_date = "2024-04-01"
+
+[assets]
+directory = "."
+
+[observability]
+enabled = true
+
+[vars]
+ENVIRONMENT = "production"
+
+# Almacenamiento distribuido KV para bóvedas (/api/chat/vault) e invitaciones (/api/chat/invites)
+# En local usa fallback seguro en memoria si no se proporciona ID
+# [[kv_namespaces]]
+# binding = "EVENTS_KV"
+# id = "..."

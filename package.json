@@ -1,0 +1,25 @@
+{
+  "name": "p2p-secure-chat",
+  "version": "1.0.0",
+  "description": "Chat P2P descentralizado, cifrado Zero-Knowledge y señalización nativa WebRTC",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev --port 8789 --ip 127.0.0.1",
+    "deploy": "wrangler deploy",
+    "test": "node --test tests/**/*.test.js"
+  },
+  "devDependencies": {
+    "wrangler": "^3.80.0"
+  },
+  "keywords": [
+    "p2p",
+    "webrtc",
+    "crypto",
+    "chat",
+    "cloudflare-workers",
+    "zero-knowledge"
+  ],
+  "author": "filthysilver",
+  "license": "MIT"
+}
