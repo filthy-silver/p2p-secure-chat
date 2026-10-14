@@ -50,7 +50,7 @@ export default {
     // Despacho de assets estáticos con cabeceras de seguridad CSP
     if (env.ASSETS) {
       let targetReq = request;
-      if (url.pathname === '/chat' || url.pathname === '/chat/') {
+      if (url.pathname === '/chat' || url.pathname.startsWith('/chat/')) {
         targetReq = new Request(new URL('/index.html', request.url), request);
       }
       const response = await env.ASSETS.fetch(targetReq);

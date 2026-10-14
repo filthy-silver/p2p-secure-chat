@@ -49,7 +49,7 @@
         <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
           <path fill="currentColor" d="M11 21h-1l1-7H7.5c-.88 0-.33-.75-.31-.78C8.48 10.94 10.42 7.54 13.01 3h1l-1 7h3.5c.49 0 .78.36.49.77L11 21z"/>
         </svg>
-        <span>Torbox DDL ⚡</span>
+        <span>Torbox DDL</span>
       </button>
 
       <button type="button" class="btn-icon-text" id="btn-share-room" title="Invitar a compañeros a esta sala">
@@ -59,7 +59,7 @@
         <span>Invitar</span>
       </button>
 
-      <button type="button" class="btn-icon-text" id="btn-open-identity" title="Gestionar tu identidad criptográfica y migración">
+      <button type="button" class="btn-icon-text" id="btn-open-identity" onclick="document.getElementById('identity-modal')?.classList.add('is-open')" title="Gestionar tu identidad criptográfica y migración">
         <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
           <path fill="currentColor" d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
         </svg>
@@ -95,11 +95,13 @@
   <!-- Banner sugerido para conversión DDL cuando se detecta un magnet -->
   <div id="torbox-quick-banner" class="torbox-quick-banner" style="display: none;">
     <div class="banner-content">
-      <span class="banner-icon">⚡</span>
+      <span class="banner-icon">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="vertical-align: middle;"><path fill="currentColor" d="M11 21h-1l1-7H7.5c-.88 0-.33-.75-.31-.78C8.48 10.94 10.42 7.54 13.01 3h1l-1 7h3.5c.49 0 .78.36.49.77L11 21z"/></svg>
+      </span>
       <span class="banner-text" id="torbox-quick-banner-text">Se ha detectado un enlace magnet. ¿Convertir a Descarga Directa de alta velocidad con Torbox?</span>
     </div>
     <div class="banner-actions">
-      <button type="button" id="btn-convert-torbox-quick" class="btn-banner-action">⚡ Convertir a DDL</button>
+      <button type="button" id="btn-convert-torbox-quick" class="btn-banner-action">Convertir a DDL</button>
       <button type="button" id="btn-dismiss-torbox-quick" class="btn-banner-close" aria-label="Cerrar aviso">&times;</button>
     </div>
   </div>
@@ -140,7 +142,7 @@
   <div class="modal-backdrop"></div>
   <div class="modal-dialog">
     <div class="modal-header">
-      <h2 id="modal-identity-title">🛡️ Tu Identidad Autosoberana</h2>
+      <h2 id="modal-identity-title">Tu Identidad Autosoberana</h2>
       <button type="button" class="btn-modal-close" aria-label="Cerrar modal">&times;</button>
     </div>
 
@@ -178,7 +180,7 @@
       <hr style="border: none; border-top: 1px solid var(--line); margin: 0.5rem 0;" />
 
       <div class="form-group">
-        <label for="import-mnemonic-input">📥 Restaurar Identidad en este Dispositivo</label>
+        <label for="import-mnemonic-input">Restaurar Identidad en este Dispositivo</label>
         <p style="font-size: 0.8rem; color: var(--muted); margin-bottom: 0.4rem;">
           Pega tus 12 palabras separadas por espacios o el contenido del archivo JSON para recuperar tu usuario:
         </p>
@@ -191,7 +193,7 @@
       <div class="form-group" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--line);">
         <label>Permisos de Moderación (filthysilver.net)</label>
         <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span id="admin-status-badge" style="font-size: 0.85rem; font-weight: 600;">👤 Miembro Regular</span>
+          <span id="admin-status-badge" style="font-size: 0.85rem; font-weight: 600;">Miembro Regular</span>
           <button type="button" class="btn-icon-text" id="btn-toggle-admin-mode">Activar Modo Admin</button>
         </div>
       </div>
@@ -204,7 +206,7 @@
   <div class="modal-backdrop"></div>
   <div class="modal-dialog">
     <div class="modal-header">
-      <h2 id="modal-share-title">🔗 Invitar a Compañeros</h2>
+      <h2 id="modal-share-title">Invitar a Compañeros</h2>
       <button type="button" class="btn-modal-close" aria-label="Cerrar modal">&times;</button>
     </div>
     <div class="modal-body">
@@ -217,7 +219,7 @@
       </div>
 
       <div style="margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid var(--line);">
-        <label style="font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase;">🌳 Cadena de Confianza y Trazabilidad</label>
+        <label style="font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase;">Cadena de Confianza y Trazabilidad</label>
         <div id="invite-tree-summary" style="font-size: 0.85rem; margin: 0.4rem 0; padding: 0.6rem; background: var(--surface-2); border-radius: 6px; border: 1px solid var(--line);">
           <span>Cargando cupos y linaje...</span>
         </div>
@@ -237,7 +239,7 @@
       </div>
 
       <div style="margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid var(--line);">
-        <label style="font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase;">📥 Canjear Código de Invitación</label>
+        <label style="font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase;">Canjear Código de Invitación</label>
         <div class="input-with-button" style="margin-top: 0.3rem;">
           <input type="text" id="claim-invite-input" class="form-input" placeholder="ej: INV-A1B2C3" />
           <button type="button" class="btn-icon-text" id="btn-claim-invite-code">Validar Acceso</button>
@@ -245,7 +247,7 @@
       </div>
 
       <div class="info-box" style="margin-top: 0.8rem;">
-        ⚡ <strong>P2P puro:</strong> Los mensajes y archivos viajan directamente entre vuestros navegadores sin almacenarse en ninguna base de datos externa.
+        <strong>P2P puro:</strong> Los mensajes y archivos viajan directamente entre vuestros navegadores sin almacenarse en ninguna base de datos externa.
       </div>
     </div>
   </div>
@@ -256,7 +258,7 @@
   <div class="modal-backdrop"></div>
   <div class="modal-dialog">
     <div class="modal-header">
-      <h2 id="modal-switch-title">🚪 Cambiar o Crear Sala</h2>
+      <h2 id="modal-switch-title">Cambiar o Crear Sala</h2>
       <button type="button" class="btn-modal-close" aria-label="Cerrar modal">&times;</button>
     </div>
     <div class="modal-body">
@@ -283,12 +285,14 @@
       </div>
     </div>
   </div>
+</div>
+
 <!-- Modal 4: Configuración de Torbox (Descargas Directas CDN y Cloud Seeding 24/7) -->
 <div class="chat-modal" id="modal-torbox-settings" role="dialog" aria-modal="true" aria-labelledby="modal-torbox-title">
   <div class="modal-backdrop"></div>
   <div class="modal-dialog">
     <div class="modal-header">
-      <h2 id="modal-torbox-title">⚡ Torbox DDL & Cloud Seeding</h2>
+      <h2 id="modal-torbox-title">Torbox DDL & Cloud Seeding</h2>
       <button type="button" class="btn-modal-close" aria-label="Cerrar modal">&times;</button>
     </div>
 
@@ -309,7 +313,9 @@
             autocomplete="off"
             spellcheck="false"
           />
-          <button type="button" class="btn-icon-text" id="btn-toggle-torbox-key-vis" title="Ver u ocultar clave">👁️</button>
+          <button type="button" class="btn-icon-text" id="btn-toggle-torbox-key-vis" title="Ver u ocultar clave">
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+          </button>
           <button type="button" class="btn-icon-text" id="btn-verify-torbox">Verificar</button>
         </div>
         <p style="font-size: 0.75rem; color: var(--muted); margin-top: 0.35rem;">
@@ -344,7 +350,7 @@
         <label style="display: flex; align-items: flex-start; gap: 0.6rem; cursor: pointer; font-size: 0.88rem; font-weight: 500;">
           <input type="checkbox" id="torbox-cloud-seed-toggle" style="margin-top: 0.2rem; transform: scale(1.15);" checked />
           <span>
-            <strong>Activar Cloud Seeding automático (24/7) 🟢</strong><br />
+            <strong>Activar Cloud Seeding automático (24/7)</strong><br />
             <span style="font-size: 0.78rem; color: var(--muted); font-weight: normal;">
               Mantiene los torrents sembrando en la nube para que tus compañeros descarguen a máxima velocidad incluso si apagas tu equipo.
             </span>

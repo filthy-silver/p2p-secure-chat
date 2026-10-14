@@ -166,19 +166,19 @@ export async function initChatWidget(options = {}) {
           if (isDestroyed) return;
           state.peers.set(peer.id, peer);
           updatePeersBadge();
-          appendSystemBubble(`🟢 ${escapeHtml(peer.nickname)} conectado`);
+          appendSystemBubble(`${escapeHtml(peer.nickname)} conectado`);
         },
         onPeerLeave: (peer) => {
           if (isDestroyed) return;
           state.peers.delete(peer.id);
           updatePeersBadge();
-          appendSystemBubble(`🔴 ${escapeHtml(peer.nickname)} desconectado`);
+          appendSystemBubble(`${escapeHtml(peer.nickname)} desconectado`);
         },
         onProfileUpdate: (peer, oldName) => {
           if (isDestroyed) return;
           state.peers.set(peer.id, peer);
           updatePeersBadge();
-          appendSystemBubble(`✏️ ${escapeHtml(oldName)} ahora es ${escapeHtml(peer.nickname)}`);
+          appendSystemBubble(`${escapeHtml(oldName)} ahora es ${escapeHtml(peer.nickname)}`);
         },
         onMessage: (message) => {
           if (isDestroyed) return;
@@ -219,7 +219,7 @@ export async function initChatWidget(options = {}) {
     function updatePeersBadge() {
       if (!dom.peersCount) return;
       const count = state.peers.size + 1; // +1 por el usuario propio
-      dom.peersCount.textContent = `🟢 ${count} en línea`;
+      dom.peersCount.textContent = `${count} en línea`;
     }
 
     function updateBadge() {
@@ -399,13 +399,13 @@ export async function initChatWidget(options = {}) {
       if (!file || !state.roomInstance) return;
 
       try {
-        appendSystemBubble(`📤 Enviando "${escapeHtml(file.name)}" a los compañeros…`);
+        appendSystemBubble(`Enviando "${escapeHtml(file.name)}" a los compañeros...`);
         const sentFileData = await state.roomInstance.sendFile(file);
         appendFileBubble({ ...sentFileData, blob: file }, true);
         appendRoomHistory(state.currentRoom, { ...sentFileData, isFile: true, isMe: true });
       } catch (err) {
         console.error('[ChatWidget] Error al transferir archivo:', err);
-        appendSystemBubble(`⚠️ Error al enviar archivo: ${err.message || 'desconocido'}`);
+        appendSystemBubble(`Error al enviar archivo: ${err.message || 'desconocido'}`);
       } finally {
         if (dom.fileInput) dom.fileInput.value = '';
       }

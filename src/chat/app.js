@@ -83,100 +83,124 @@ const state = {
   pendingTorrentFile: null
 };
 
-// Elementos del DOM
-const elements = {
-  roomTitle: document.getElementById('room-title'),
-  connectionStatus: document.getElementById('connection-status'),
-  statusIndicator: document.getElementById('status-indicator'),
-  peersCountBadge: document.getElementById('peers-count-badge'),
-  peersList: document.getElementById('peers-list'),
-  messagesFeed: document.getElementById('messages-feed'),
-  chatForm: document.getElementById('chat-form'),
-  messageInput: document.getElementById('message-input'),
-  btnSend: document.getElementById('btn-send'),
+// Elementos del DOM reactivos
+export const elements = {};
+
+export function initElements() {
+  if (typeof document === 'undefined') return;
+  elements.roomTitle = document.getElementById('room-title');
+  elements.connectionStatus = document.getElementById('connection-status');
+  elements.statusIndicator = document.getElementById('status-indicator');
+  elements.peersCountBadge = document.getElementById('peers-count-badge');
+  elements.peersList = document.getElementById('peers-list');
+  elements.messagesFeed = document.getElementById('messages-feed');
+  elements.chatForm = document.getElementById('chat-form');
+  elements.messageInput = document.getElementById('message-input');
+  elements.btnSend = document.getElementById('btn-send');
 
   // Botones de cabecera
-  btnOpenTorbox: document.getElementById('btn-open-torbox'),
-  btnOpenIdentity: document.getElementById('btn-open-identity'),
-  btnShareRoom: document.getElementById('btn-share-room'),
-  btnSwitchRoom: document.getElementById('btn-switch-room'),
+  elements.btnOpenTorbox = document.getElementById('btn-open-torbox');
+  elements.btnOpenIdentity = document.getElementById('btn-open-identity');
+  elements.btnShareRoom = document.getElementById('btn-share-room');
+  elements.btnSwitchRoom = document.getElementById('btn-switch-room');
 
   // Transferencia de archivos
-  fileInput: document.getElementById('file-input'),
-  btnAttachFile: document.getElementById('btn-attach-file'),
+  elements.fileInput = document.getElementById('file-input');
+  elements.btnAttachFile = document.getElementById('btn-attach-file');
 
   // Modales
-  identityModal: document.getElementById('identity-modal'),
-  shareModal: document.getElementById('share-modal'),
-  switchRoomModal: document.getElementById('switch-room-modal'),
-  modalTorboxSettings: document.getElementById('modal-torbox-settings'),
+  elements.identityModal = document.getElementById('identity-modal');
+  elements.shareModal = document.getElementById('share-modal');
+  elements.switchRoomModal = document.getElementById('switch-room-modal');
+  elements.modalTorboxSettings = document.getElementById('modal-torbox-settings');
 
   // Elementos del modal de Torbox
-  torboxApiKeyInput: document.getElementById('torbox-api-key-input'),
-  btnToggleTorboxKeyVis: document.getElementById('btn-toggle-torbox-key-vis'),
-  btnVerifyTorbox: document.getElementById('btn-verify-torbox'),
-  torboxStatusCard: document.getElementById('torbox-status-card'),
-  torboxPlanBadge: document.getElementById('torbox-plan-badge'),
-  torboxUserEmail: document.getElementById('torbox-user-email'),
-  torboxActiveSlots: document.getElementById('torbox-active-slots'),
-  torboxDownloadLimit: document.getElementById('torbox-download-limit'),
-  torboxCloudSeedToggle: document.getElementById('torbox-cloud-seed-toggle'),
-  btnSaveTorbox: document.getElementById('btn-save-torbox'),
-  btnDisconnectTorbox: document.getElementById('btn-disconnect-torbox'),
+  elements.torboxApiKeyInput = document.getElementById('torbox-api-key-input');
+  elements.btnToggleTorboxKeyVis = document.getElementById('btn-toggle-torbox-key-vis');
+  elements.btnVerifyTorbox = document.getElementById('btn-verify-torbox');
+  elements.torboxStatusCard = document.getElementById('torbox-status-card');
+  elements.torboxPlanBadge = document.getElementById('torbox-plan-badge');
+  elements.torboxUserEmail = document.getElementById('torbox-user-email');
+  elements.torboxActiveSlots = document.getElementById('torbox-active-slots');
+  elements.torboxDownloadLimit = document.getElementById('torbox-download-limit');
+  elements.torboxCloudSeedToggle = document.getElementById('torbox-cloud-seed-toggle');
+  elements.btnSaveTorbox = document.getElementById('btn-save-torbox');
+  elements.btnDisconnectTorbox = document.getElementById('btn-disconnect-torbox');
 
   // Banner rápido de conversión DDL
-  torboxQuickBanner: document.getElementById('torbox-quick-banner'),
-  torboxQuickBannerText: document.getElementById('torbox-quick-banner-text'),
-  btnConvertTorboxQuick: document.getElementById('btn-convert-torbox-quick'),
-  btnDismissTorboxQuick: document.getElementById('btn-dismiss-torbox-quick'),
+  elements.torboxQuickBanner = document.getElementById('torbox-quick-banner');
+  elements.torboxQuickBannerText = document.getElementById('torbox-quick-banner-text');
+  elements.btnConvertTorboxQuick = document.getElementById('btn-convert-torbox-quick');
+  elements.btnDismissTorboxQuick = document.getElementById('btn-dismiss-torbox-quick');
 
   // Elementos del modal de identidad
-  inputNickname: document.getElementById('modal-nickname'),
-  badgeFingerprint: document.getElementById('modal-fingerprint'),
-  wordsContainer: document.getElementById('modal-seed-words'),
-  btnSaveNickname: document.getElementById('btn-save-nickname'),
-  btnCopySeed: document.getElementById('btn-copy-seed'),
-  btnExportJson: document.getElementById('btn-export-json'),
-  inputImportMnemonic: document.getElementById('import-mnemonic-input'),
-  btnImportMnemonic: document.getElementById('btn-import-mnemonic'),
+  elements.inputNickname = document.getElementById('modal-nickname');
+  elements.badgeFingerprint = document.getElementById('modal-fingerprint');
+  elements.wordsContainer = document.getElementById('modal-seed-words');
+  elements.btnSaveNickname = document.getElementById('btn-save-nickname');
+  elements.btnCopySeed = document.getElementById('btn-copy-seed');
+  elements.btnExportJson = document.getElementById('btn-export-json');
+  elements.inputImportMnemonic = document.getElementById('import-mnemonic-input');
+  elements.btnImportMnemonic = document.getElementById('btn-import-mnemonic');
 
   // Moderación en el modal de identidad
-  btnToggleAdminMode: document.getElementById('btn-toggle-admin-mode'),
-  adminStatusBadge: document.getElementById('admin-status-badge'),
+  elements.btnToggleAdminMode = document.getElementById('btn-toggle-admin-mode');
+  elements.adminStatusBadge = document.getElementById('admin-status-badge');
 
   // Modal de compartir e invitaciones
-  shareLinkInput: document.getElementById('share-link-input'),
-  btnCopyShareLink: document.getElementById('btn-copy-share-link'),
-  btnGenerateInviteToken: document.getElementById('btn-generate-invite-token'),
-  inviteTokenContainer: document.getElementById('invite-token-container'),
-  inviteTokenOutput: document.getElementById('invite-token-output'),
-  btnCopyInviteToken: document.getElementById('btn-copy-invite-token'),
+  elements.shareLinkInput = document.getElementById('share-link-input');
+  elements.btnCopyShareLink = document.getElementById('btn-copy-share-link');
+  elements.btnGenerateInviteToken = document.getElementById('btn-generate-invite-token');
+  elements.inviteTokenContainer = document.getElementById('invite-token-container');
+  elements.inviteTokenOutput = document.getElementById('invite-token-output');
+  elements.btnCopyInviteToken = document.getElementById('btn-copy-invite-token');
 
   // Árbol de invitaciones y cupos trazables
-  inviteTreeSummary: document.getElementById('invite-tree-summary'),
-  targetGuestInput: document.getElementById('target-guest-input'),
-  btnCreateQuotaInvite: document.getElementById('btn-create-quota-invite'),
-  issuedInvitesContainer: document.getElementById('issued-invites-container'),
-  issuedInvitesList: document.getElementById('issued-invites-list'),
-  claimInviteInput: document.getElementById('claim-invite-input'),
-  btnClaimInviteCode: document.getElementById('btn-claim-invite-code'),
+  elements.inviteTreeSummary = document.getElementById('invite-tree-summary');
+  elements.targetGuestInput = document.getElementById('target-guest-input');
+  elements.btnCreateQuotaInvite = document.getElementById('btn-create-quota-invite');
+  elements.issuedInvitesContainer = document.getElementById('issued-invites-container');
+  elements.issuedInvitesList = document.getElementById('issued-invites-list');
+  elements.claimInviteInput = document.getElementById('claim-invite-input');
+  elements.btnClaimInviteCode = document.getElementById('btn-claim-invite-code');
 
   // Modal de cambio de sala
-  newRoomInput: document.getElementById('new-room-input'),
-  btnConfirmSwitchRoom: document.getElementById('btn-confirm-switch-room'),
-  recentRoomsList: document.getElementById('recent-rooms-list'),
-  officialRoomsList: document.getElementById('official-rooms-list')
-};
+  elements.newRoomInput = document.getElementById('new-room-input');
+  elements.btnConfirmSwitchRoom = document.getElementById('btn-confirm-switch-room');
+  elements.recentRoomsList = document.getElementById('recent-rooms-list');
+  elements.officialRoomsList = document.getElementById('official-rooms-list');
+}
+
+// Inicialización temprana de elementos en caso de que el DOM ya exista
+if (typeof document !== 'undefined') {
+  initElements();
+}
 
 /**
  * Inicialización de la aplicación al cargar el DOM.
  */
 export async function initChatApp() {
+  initElements();
   initThemeSupport();
-  await setupUserIdentity();
-  await checkInviteUrlParam();
-  setupRoomFromUrl();
   bindEvents();
+
+  try {
+    await setupUserIdentity();
+  } catch (err) {
+    console.error('[Chat] Error inicializando identidad:', err);
+  }
+
+  try {
+    await checkInviteUrlParam();
+  } catch (err) {
+    console.error('[Chat] Error verificando invitación:', err);
+  }
+
+  try {
+    setupRoomFromUrl();
+  } catch (err) {
+    console.error('[Chat] Error conectando a la sala:', err);
+  }
 }
 
 /**
@@ -196,10 +220,10 @@ async function checkInviteUrlParam() {
     const result = await verifyInviteToken(inviteToken);
     if (result.valid) {
       localStorage.setItem('p2p_community_access_granted', 'true');
-      appendSystemMessage(`🎉 ¡Bienvenido! Tu token de invitación oficial ha sido verificado.`);
+      appendSystemMessage('¡Bienvenido! Tu token de invitación oficial ha sido verificado.');
     } else {
       console.warn('[Invite] Token inválido:', result.reason);
-      appendSystemMessage(`⚠️ El enlace de invitación presentado no es válido: ${result.reason}`);
+      appendSystemMessage(`Aviso: El enlace de invitación presentado no es válido: ${result.reason}`);
     }
   }
 }
@@ -342,13 +366,13 @@ function updateIdentityUi() {
   // Indicador de modo moderador / Administrador Raíz Génesis
   if (elements.adminStatusBadge) {
     if (isGenesisRoot) {
-      elements.adminStatusBadge.innerHTML = '👑 Administrador Raíz Génesis (FilthySilver)';
+      elements.adminStatusBadge.innerHTML = 'Administrador Raíz Génesis (FilthySilver)';
       elements.adminStatusBadge.style.color = 'var(--accent)';
       if (elements.btnToggleAdminMode) {
         elements.btnToggleAdminMode.style.display = 'none';
       }
     } else {
-      elements.adminStatusBadge.textContent = state.isAdmin ? '🛡️ Moderador Activo' : '👤 Miembro Regular';
+      elements.adminStatusBadge.textContent = state.isAdmin ? 'Moderador Activo' : 'Miembro Regular';
       elements.adminStatusBadge.style.color = state.isAdmin ? 'var(--warning)' : 'var(--muted)';
       if (elements.btnToggleAdminMode) {
         elements.btnToggleAdminMode.style.display = '';
@@ -418,17 +442,17 @@ function joinRoom(roomId) {
     onPeerJoin: (peerProfile) => {
       state.peers.set(peerProfile.id, peerProfile);
       updatePeersListUi();
-      appendSystemMessage(`🟢 ${escapeHtml(peerProfile.nickname)} se ha unido a la sala`);
+      appendSystemMessage(`${escapeHtml(peerProfile.nickname)} se ha unido a la sala`);
     },
     onPeerLeave: (peerProfile) => {
       state.peers.delete(peerProfile.id);
       updatePeersListUi();
-      appendSystemMessage(`🔴 ${escapeHtml(peerProfile.nickname)} ha salido de la sala`);
+      appendSystemMessage(`${escapeHtml(peerProfile.nickname)} ha salido de la sala`);
     },
     onProfileUpdate: (peerProfile, oldName) => {
       state.peers.set(peerProfile.id, peerProfile);
       updatePeersListUi();
-      appendSystemMessage(`✏️ ${escapeHtml(oldName)} ahora se llama ${escapeHtml(peerProfile.nickname)}`);
+      appendSystemMessage(`${escapeHtml(oldName)} ahora se llama ${escapeHtml(peerProfile.nickname)}`);
     },
     onMessage: (message) => {
       if (message.torbox) {
@@ -482,9 +506,10 @@ function updatePeersListUi() {
   // Elemento del usuario propio
   const meTag = document.createElement('div');
   meTag.className = 'peer-pill peer-me';
+  const myNick = state.identity?.nickname || 'Tú';
   meTag.innerHTML = `
     <span class="peer-dot online"></span>
-    <span class="peer-name">${escapeHtml(state.identity.nickname)}</span>
+    <span class="peer-name">${escapeHtml(myNick)}</span>
     <span class="peer-tag">(Tú)</span>
   `;
   elements.peersList.appendChild(meTag);
@@ -496,8 +521,8 @@ function updatePeersListUi() {
     pill.innerHTML = `
       <span class="peer-dot online"></span>
       <span class="peer-name" title="ID: 0x${escapeHtml(peerId)}">${escapeHtml(peer.nickname)}</span>
-      ${peer.isModerator ? `<span class="peer-badge-mod" title="Moderador Verificado Criptográficamente (${escapeHtml(peer.moderatorRole)})">🛡️</span>` : ''}
-      ${state.isAdmin ? `<button type="button" class="btn-kick-peer" data-peer-id="${escapeHtml(peerId)}" title="Expulsar a este usuario">⛔</button>` : ''}
+      ${peer.isModerator ? `<span class="peer-badge-mod" title="Moderador Verificado Criptográficamente (${escapeHtml(peer.moderatorRole)})">[MOD]</span>` : ''}
+      ${state.isAdmin ? `<button type="button" class="btn-kick-peer" data-peer-id="${escapeHtml(peerId)}" title="Expulsar a este usuario">Expulsar</button>` : ''}
     `;
 
     if (state.isAdmin) {
@@ -528,9 +553,9 @@ function appendChatMessage(msg, isMe = false) {
       <div class="msg-header">
         <span class="msg-author">${escapeHtml(msg.fromNickname)}</span>
         <span class="msg-meta">
-          ${msg.isVerified ? '<span class="verified-badge" title="Firma criptográfica verificada (ECDSA)">🛡️</span>' : ''}
+          ${msg.isVerified ? '<span class="verified-badge" title="Firma criptográfica verificada (ECDSA)">[Verificado]</span>' : ''}
           <time>${timeString}</time>
-          ${state.isAdmin ? `<button type="button" class="btn-mod-delete" data-msg-id="${escapeHtml(msg.id)}" title="Eliminar mensaje como moderador">🗑️</button>` : ''}
+          ${state.isAdmin ? `<button type="button" class="btn-mod-delete" data-msg-id="${escapeHtml(msg.id)}" title="Eliminar mensaje como moderador"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button>` : ''}
         </span>
       </div>
       <div class="msg-body">${escapeHtml(msg.text)}</div>
@@ -571,14 +596,14 @@ function appendFileBubble(fileData, isMe = false) {
       </div>
       <div class="file-attachment-card">
         <div class="file-header-row">
-          <span class="file-name-meta">📦 ${escapeHtml(fileData.fileName)}</span>
+          <span class="file-name-meta">${escapeHtml(fileData.fileName)}</span>
           <span class="file-size-tag">${formattedSize}</span>
         </div>
 
         <div class="file-authorship-badge">
           ${(isMe || (fileData.authorship?.valid && fileData.isValidHash !== false))
-            ? `🛡️ Autoría Criptográfica Verificada: ${escapeHtml(fileData.authorship?.authorNickname || fileData.fromNickname)}`
-            : '⚠️ Autoría o integridad NO verificada: no abras este archivo si no confías en el remitente'}
+            ? `Autoría Criptográfica Verificada: ${escapeHtml(fileData.authorship?.authorNickname || fileData.fromNickname)}`
+            : 'Aviso: Autoría o integridad no verificada: no abras este archivo si no confías en el remitente'}
         </div>
 
         <div class="file-hash-tag">
@@ -587,10 +612,10 @@ function appendFileBubble(fileData, isMe = false) {
 
         ${fileData.blobUrl ? `
           <a href="${escapeHtml(fileData.blobUrl)}" download="${escapeHtml(fileData.fileName)}" class="btn-download-file">
-            ⬇️ Descargar archivo directo
+            Descargar archivo directo
           </a>
         ` : `
-          <div style="font-size: 0.75rem; color: var(--muted);">✓ Transferido a compañeros</div>
+          <div style="font-size: 0.75rem; color: var(--muted);">Transferido a compañeros</div>
         `}
       </div>
     </div>
@@ -623,20 +648,20 @@ function appendTorboxCard(msg, isMe = false) {
       <div class="msg-header">
         <span class="msg-author">${escapeHtml(msg.fromNickname)}</span>
         <span class="msg-meta">
-          ${msg.isVerified ? '<span class="verified-badge" title="Firma criptográfica verificada (ECDSA)">🛡️</span>' : ''}
+          ${msg.isVerified ? '<span class="verified-badge" title="Firma criptográfica verificada (ECDSA)">[Verificado]</span>' : ''}
           <time>${timeString}</time>
-          ${state.isAdmin ? `<button type="button" class="btn-mod-delete" data-msg-id="${escapeHtml(msg.id)}" title="Eliminar mensaje como moderador">🗑️</button>` : ''}
+          ${state.isAdmin ? `<button type="button" class="btn-mod-delete" data-msg-id="${escapeHtml(msg.id)}" title="Eliminar mensaje como moderador"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button>` : ''}
         </span>
       </div>
       <div class="torbox-card">
         <div class="torbox-card-header">
-          <span class="torbox-brand-pill">⚡ Torbox Direct Download</span>
+          <span class="torbox-brand-pill">Torbox Direct Download</span>
           <span class="torbox-seed-status">
-            ${tb.isCloudSeeding !== false ? 'Sembrando en la nube 24/7 🟢 (Peers activos)' : 'Sembrado en proceso 🟡'}
+            ${tb.isCloudSeeding !== false ? 'Sembrando en la nube 24/7 (Peers activos)' : 'Sembrado en proceso'}
           </span>
         </div>
 
-        <div class="torbox-file-name">📦 ${escapeHtml(tb.fileName || 'Proyecto 3D')}</div>
+        <div class="torbox-file-name">${escapeHtml(tb.fileName || 'Proyecto 3D')}</div>
 
         <div class="torbox-meta-row">
           <span class="torbox-meta-item">Tamaño: <strong>${formattedSize}</strong></span>
@@ -645,11 +670,11 @@ function appendTorboxCard(msg, isMe = false) {
 
         ${safeDdlUrl ? `
           <a href="${safeDdlUrl}" target="_blank" rel="noopener noreferrer" class="btn-torbox-download">
-            <span>Descargar a máxima velocidad (DDL) 📥</span>
+            <span>Descargar a máxima velocidad (DDL)</span>
           </a>
         ` : `
           <div style="font-size: 0.8rem; color: var(--muted); padding: 0.4rem; background: var(--surface); border-radius: 6px;">
-            ⏳ Procesando en Torbox CDN... Si tarda unos minutos, puedes usar el enlace magnet alternativo abajo.
+            Procesando en Torbox CDN... Si tarda unos minutos, puedes usar el enlace magnet alternativo abajo.
           </div>
         `}
 
@@ -683,7 +708,7 @@ function showQuickBanner(text) {
       elements.torboxQuickBannerText.textContent = text;
     }
     if (elements.btnConvertTorboxQuick) {
-      elements.btnConvertTorboxQuick.textContent = hasTorboxKey() ? '⚡ Convertir a DDL con Torbox' : '⚡ Configurar Torbox';
+      elements.btnConvertTorboxQuick.textContent = hasTorboxKey() ? 'Convertir a DDL con Torbox' : 'Configurar Torbox';
     }
     elements.torboxQuickBanner.style.display = 'flex';
   }
@@ -728,20 +753,25 @@ async function updateTorboxAccountStatus(key) {
     elements.torboxStatusCard.style.display = 'block';
 
     const planRaw = data.plan !== undefined ? data.plan : (data.user && data.user.plan);
-    let planBadgeText = 'Free 🟡';
+    let planBadgeText = 'Free';
     let isPro = false;
     if (planRaw === 2 || planRaw === 3 || planRaw === 'pro' || planRaw === 'standard') {
-      planBadgeText = 'Pro 🟢';
+      planBadgeText = 'Pro';
       isPro = true;
     } else if (planRaw === 1 || planRaw === 'essential') {
-      planBadgeText = 'Essential 🟢';
+      planBadgeText = 'Essential';
       isPro = true;
     } else if (planRaw === 0 || planRaw === 'free') {
-      planBadgeText = 'Free 🟡';
+      planBadgeText = 'Free';
       isPro = false;
     } else if (planRaw) {
-      planBadgeText = `Plan ${planRaw} 🟢`;
+      planBadgeText = `Plan ${planRaw}`;
       isPro = true;
+    }
+
+    if (elements.torboxPlanBadge) {
+      elements.torboxPlanBadge.textContent = planBadgeText;
+      elements.torboxPlanBadge.className = `badge-plan ${isPro ? 'pro' : 'free'}`;
     }
 
     if (elements.torboxPlanBadge) {
@@ -782,7 +812,7 @@ async function convertAndBroadcastTorbox(magnetOrFile) {
   const isFile = magnetOrFile instanceof Blob || (typeof File !== 'undefined' && magnetOrFile instanceof File);
   const targetName = isFile ? magnetOrFile.name : parseMagnetName(magnetOrFile);
 
-  appendSystemMessage(`⏳ Conectando con Torbox para procesar "${escapeHtml(targetName)}"...`);
+  appendSystemMessage(`Conectando con Torbox para procesar "${escapeHtml(targetName)}"...`);
 
   try {
     const isSeed = isCloudSeedingEnabled();
@@ -825,17 +855,17 @@ async function convertAndBroadcastTorbox(magnetOrFile) {
     };
 
     const sentMsg = await state.roomInstance.sendMessage(
-      `⚡ [Torbox DDL] ${fileName}`,
+      `[Torbox DDL] ${fileName}`,
       torboxPayload
     );
 
     appendTorboxCard(sentMsg, true);
     appendRoomHistory(state.currentRoomId, { ...sentMsg, isMe: true });
-    appendSystemMessage(`✓ Proyecto "${escapeHtml(fileName)}" listo con Descarga Directa Torbox y Cloud Seeding 24/7.`);
+    appendSystemMessage(`Proyecto "${escapeHtml(fileName)}" listo con Descarga Directa Torbox y Cloud Seeding 24/7.`);
 
   } catch (err) {
     console.error('[Torbox] Error al convertir archivo:', err);
-    appendSystemMessage(`❌ Error en Torbox: ${escapeHtml(err.message)}`);
+    appendSystemMessage(`Error en Torbox: ${escapeHtml(err.message)}`);
     alert(`Error de Torbox: ${err.message}\nVerifica tus slots disponibles o la validez de tu API Key.`);
   }
 }
@@ -845,13 +875,13 @@ async function convertAndBroadcastTorbox(magnetOrFile) {
  */
 async function handleSendFile(file) {
   if (!file || !state.roomInstance) return;
-  appendSystemMessage(`⏳ Calculando SHA-256 y firmando certificado de autoría para "${escapeHtml(file.name)}"...`);
+  appendSystemMessage(`Calculando SHA-256 y firmando certificado de autoría para "${escapeHtml(file.name)}"...`);
 
   try {
     const sentMeta = await state.roomInstance.sendFile(file);
     appendFileBubble(sentMeta, true);
     appendRoomHistory(state.currentRoomId, { ...sentMeta, isFile: true, isMe: true });
-    appendSystemMessage(`✓ "${escapeHtml(file.name)}" transmitido por P2P con certificado de autoría.`);
+    appendSystemMessage(`"${escapeHtml(file.name)}" transmitido por P2P con certificado de autoría.`);
   } catch (err) {
     alert(`Error enviando archivo: ${err.message}`);
   }
@@ -894,7 +924,7 @@ async function loadUserInviteTree() {
             <span class="invite-code-pill">${escapeHtml(inv.code)}</span>
             <span>Para: ${escapeHtml(inv.targetLabel)}</span>
             <span class="invite-status-badge ${inv.used ? 'claimed' : ''}">
-              ${inv.used ? `✓ Canjeado (${escapeHtml(inv.usedByLabel)})` : 'Pendiente'}
+              ${inv.used ? `Canjeado (${escapeHtml(inv.usedByLabel)})` : 'Pendiente'}
             </span>
           `;
           elements.issuedInvitesList.appendChild(item);
@@ -1011,12 +1041,12 @@ function handleUiMessageDeleted(messageId) {
     if (cardEl) cardEl.remove();
     const bodyEl = msgEl.querySelector('.msg-body');
     if (bodyEl) {
-      bodyEl.innerHTML = '<em style="color: var(--muted); font-size: 0.85rem;">🚫 Este mensaje ha sido eliminado por un moderador.</em>';
+      bodyEl.innerHTML = '<em style="color: var(--muted); font-size: 0.85rem;">Este mensaje ha sido eliminado por un moderador.</em>';
     } else {
       const bubble = msgEl.querySelector('.chat-bubble');
       if (bubble) {
         const notice = document.createElement('div');
-        notice.innerHTML = '<em style="color: var(--muted); font-size: 0.85rem;">🚫 Este mensaje ha sido eliminado por un moderador.</em>';
+        notice.innerHTML = '<em style="color: var(--muted); font-size: 0.85rem;">Este mensaje ha sido eliminado por un moderador.</em>';
         bubble.appendChild(notice);
       }
     }
@@ -1038,7 +1068,7 @@ async function executeAdminKick(peerId, nickname) {
       state.identity.privateKey,
       state.identity.publicSpki
     );
-    appendSystemMessage(`⚡ Has expulsado a ${escapeHtml(nickname)} de la sala.`);
+    appendSystemMessage(`Has expulsado a ${escapeHtml(nickname)} de la sala.`);
   } catch (err) {
     alert(`Error al expulsar: ${err.message}`);
   }
@@ -1069,7 +1099,7 @@ function showKickedUi(reason) {
   if (elements.messagesFeed) {
     elements.messagesFeed.innerHTML = `
       <div style="text-align: center; margin: 3rem auto; max-width: 450px; padding: 2rem; background: var(--surface); border: 1px solid var(--danger); border-radius: 12px;">
-        <h2 style="color: var(--danger); margin-bottom: 0.75rem;">⛔ Acceso denegado</h2>
+        <h2 style="color: var(--danger); margin-bottom: 0.75rem;">Acceso denegado</h2>
         <p style="font-size: 0.95rem; margin-bottom: 1rem;">Has sido expulsado de esta sala por un moderador.</p>
         <p style="font-size: 0.85rem; color: var(--muted);"><strong>Motivo:</strong> ${escapeHtml(reason)}</p>
       </div>
@@ -1148,9 +1178,9 @@ function bindEvents() {
       state.pendingMagnet = text;
       state.pendingTorrentFile = null;
       if (hasTorboxKey()) {
-        showQuickBanner('⚡ Enlace magnet detectado. ¿Convertir a Descarga Directa con Torbox y sembrar 24/7?');
+        showQuickBanner('Enlace magnet detectado. ¿Convertir a Descarga Directa con Torbox y sembrar 24/7?');
       } else {
-        showQuickBanner('⚡ Enlace magnet detectado. Configura Torbox para convertir a Descarga Directa de alta velocidad.');
+        showQuickBanner('Enlace magnet detectado. Configura Torbox para convertir a Descarga Directa de alta velocidad.');
       }
     } else if (!state.pendingTorrentFile) {
       hideQuickBanner();
@@ -1190,7 +1220,7 @@ function bindEvents() {
       if (file.name.toLowerCase().endsWith('.torrent') && hasTorboxKey()) {
         state.pendingTorrentFile = file;
         state.pendingMagnet = null;
-        showQuickBanner(`⚡ ¿Convertir "${file.name}" a Descarga Directa con Torbox y sembrar 24/7?`);
+        showQuickBanner(`¿Convertir "${file.name}" a Descarga Directa con Torbox y sembrar 24/7?`);
       } else {
         await handleSendFile(file);
       }
@@ -1217,7 +1247,7 @@ function bindEvents() {
         if (file.name.toLowerCase().endsWith('.torrent') && hasTorboxKey()) {
           state.pendingTorrentFile = file;
           state.pendingMagnet = null;
-          showQuickBanner(`⚡ ¿Convertir "${file.name}" a Descarga Directa con Torbox y sembrar 24/7?`);
+          showQuickBanner(`¿Convertir "${file.name}" a Descarga Directa con Torbox y sembrar 24/7?`);
         } else {
           await handleSendFile(file);
         }
@@ -1244,7 +1274,7 @@ function bindEvents() {
     elements.btnVerifyTorbox.textContent = 'Verificando...';
     try {
       await updateTorboxAccountStatus(key);
-      alert('✓ ¡Cuenta de Torbox validada correctamente!');
+      alert('Cuenta de Torbox validada correctamente.');
     } catch (err) {
       alert(`Error de verificación: ${err.message}`);
     } finally {
@@ -1260,7 +1290,7 @@ function bindEvents() {
       setTorboxKey(key);
       setCloudSeedingEnabled(seedEnabled);
       closeModal(elements.modalTorboxSettings);
-      appendSystemMessage('⚡ Cuenta de Torbox guardada. Descargas Directas CDN y Cloud Seeding 24/7 activos.');
+      appendSystemMessage('Cuenta de Torbox guardada. Descargas Directas CDN y Cloud Seeding 24/7 activos.');
     } else {
       alert('Introduce una clave válida o pulsa "Desconectar" para borrarla.');
     }
@@ -1273,13 +1303,26 @@ function bindEvents() {
     if (elements.torboxStatusCard) elements.torboxStatusCard.style.display = 'none';
     closeModal(elements.modalTorboxSettings);
     hideQuickBanner();
-    appendSystemMessage('ℹ️ Cuenta de Torbox desconectada de este navegador.');
+    appendSystemMessage('Cuenta de Torbox desconectada de este navegador.');
   });
 
-  // Modales: Abrir y Cerrar
-  elements.btnOpenIdentity?.addEventListener('click', () => {
+  // Modal de Identidad: Manejador directo e infalible
+  const handleOpenIdentity = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
     updateIdentityUi();
-    openModal(elements.identityModal);
+    openModal(elements.identityModal || document.getElementById('identity-modal'));
+  };
+
+  const btnOpenIdentity = elements.btnOpenIdentity || document.getElementById('btn-open-identity');
+  if (btnOpenIdentity) {
+    btnOpenIdentity.onclick = handleOpenIdentity;
+  }
+
+  // Delegación de clics global para garantizar apertura del modal de identidad
+  document.addEventListener('click', (e) => {
+    if (e.target && (e.target.id === 'btn-open-identity' || e.target.closest('#btn-open-identity'))) {
+      handleOpenIdentity(e);
+    }
   });
 
   elements.btnShareRoom?.addEventListener('click', async () => {
@@ -1315,7 +1358,7 @@ function bindEvents() {
     }
 
     closeModal(elements.identityModal);
-    appendSystemMessage(`ℹ️ Has actualizado tu apodo a: <strong>${escapeHtml(newName)}</strong>`);
+    appendSystemMessage(`Has actualizado tu apodo a: <strong>${escapeHtml(newName)}</strong>`);
   });
 
   // Alternar modo administrador
@@ -1346,7 +1389,7 @@ function bindEvents() {
             if (state.roomInstance) {
               state.roomInstance.moderatorCertificate = parsed;
             }
-            alert(`🛡️ Certificado de moderador validado con éxito.\nExpira en: ${new Date(parsed.certificatePayload.expiresAt).toLocaleString()}`);
+            alert(`Certificado de moderador validado con éxito.\nExpira en: ${new Date(parsed.certificatePayload.expiresAt).toLocaleString()}`);
           } else {
             alert(`Certificado no válido: ${verifyResult.error}`);
           }
@@ -1356,7 +1399,7 @@ function bindEvents() {
       } else if (trimmed === 'filthysilver3d' || trimmed === 'admin') {
         state.isAdmin = true;
         localStorage.setItem('p2p_chat_is_admin', 'true');
-        alert('🛡️ Modo moderador activado (Clave Génesis).');
+        alert('Modo moderador activado (Clave Génesis).');
       } else {
         alert('Código o certificado incorrecto.');
       }
@@ -1423,7 +1466,7 @@ function bindEvents() {
       const encoder = new TextEncoder();
       const seedHash = await computeFileHash(encoder.encode(inputStr.trim().toLowerCase()).buffer);
 
-      appendSystemMessage('⏳ Consultando Bóveda Criptográfica en Cloudflare para restaurar identidad...');
+      appendSystemMessage('Consultando Bóveda Criptográfica en Cloudflare para restaurar identidad...');
 
       try {
         const vaultRes = await fetch(`/api/chat/vault?seedHash=${seedHash}`);
@@ -1446,7 +1489,7 @@ function bindEvents() {
           };
 
           saveStoredIdentity(restoredIdentity);
-          alert(`🎉 ¡Identidad "${vaultData.nickname}" (0x${vaultData.fingerprint}) recuperada con éxito desde Cloudflare!`);
+          alert(`Identidad "${vaultData.nickname}" (0x${vaultData.fingerprint}) recuperada con éxito desde Cloudflare.`);
           window.location.reload();
           return;
         }
@@ -1497,6 +1540,13 @@ function bindEvents() {
       }
     });
   });
+
+  // Soporte para cerrar modales con la tecla Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeAllModals();
+    }
+  });
 }
 
 function navigateToRoom(roomId) {
@@ -1508,16 +1558,27 @@ function navigateToRoom(roomId) {
   joinRoom(roomId);
 }
 
-function openModal(modalEl) {
-  if (modalEl) modalEl.classList.add('is-open');
+export function openModal(modalEl) {
+  const el = typeof modalEl === 'string' ? document.getElementById(modalEl) : (modalEl || document.getElementById('identity-modal'));
+  if (el) {
+    el.classList.add('is-open');
+    el.setAttribute('aria-hidden', 'false');
+  }
 }
 
-function closeModal(modalEl) {
-  if (modalEl) modalEl.classList.remove('is-open');
+export function closeModal(modalEl) {
+  const el = typeof modalEl === 'string' ? document.getElementById(modalEl) : modalEl;
+  if (el) {
+    el.classList.remove('is-open');
+    el.setAttribute('aria-hidden', 'true');
+  }
 }
 
-function closeAllModals() {
-  document.querySelectorAll('.chat-modal').forEach(m => m.classList.remove('is-open'));
+export function closeAllModals() {
+  document.querySelectorAll('.chat-modal').forEach(m => {
+    m.classList.remove('is-open');
+    m.setAttribute('aria-hidden', 'true');
+  });
 }
 
 function renderOfficialRoomsUi() {
