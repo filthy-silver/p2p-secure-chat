@@ -440,6 +440,43 @@
   </div>
 </div>
 
+<!-- Modal de Inspección 3D (OBJ, STL, GLB, GLTF) -->
+<div class="mesh-viewer-modal" id="mesh-viewer-modal" role="dialog" aria-modal="true" aria-label="Inspección de Malla 3D" style="display: none;">
+  <div class="mesh-viewer-backdrop" id="mesh-viewer-backdrop"></div>
+  <div class="mesh-viewer-content">
+    <div class="mesh-viewer-toolbar">
+      <div class="mesh-viewer-title-wrap">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <path fill="currentColor" d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.991.991 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88v9zM12 4.15L6.04 7.5 12 10.85l5.96-3.35L12 4.15zM5 8.91v6.18l6 3.38V12.3L5 8.91zm14 0l-6 3.39v6.17l6-3.38V8.91z"/>
+        </svg>
+        <span class="mesh-viewer-filename" id="mesh-viewer-filename">modelo.obj</span>
+        <span class="mesh-viewer-badge" id="mesh-viewer-polycount">Calculando malla...</span>
+      </div>
+      <div class="mesh-viewer-controls-row">
+        <div class="mesh-view-mode-group" role="group" aria-label="Modo de sombreado">
+          <button type="button" class="btn-mesh-mode is-active" data-mode="clay" id="btn-mesh-mode-clay" title="Vista de arcilla sólida">Sólido</button>
+          <button type="button" class="btn-mesh-mode" data-mode="wireframe" id="btn-mesh-mode-wire" title="Malla de alambre para inspeccionar topología">Malla</button>
+          <button type="button" class="btn-mesh-mode" data-mode="both" id="btn-mesh-mode-both" title="Sólido con aristas superpuestas">Sólido + Malla</button>
+        </div>
+        <button type="button" class="btn-mesh-action" id="btn-mesh-reset-cam" title="Centrar cámara en el modelo">Centrar</button>
+        <button type="button" class="btn-mesh-close" id="btn-close-mesh-viewer" aria-label="Cerrar visor 3D">&times;</button>
+      </div>
+    </div>
+    <div class="mesh-viewer-canvas-wrap" id="mesh-viewer-canvas-wrap">
+      <div class="mesh-viewer-loading" id="mesh-viewer-loading" style="display: none;">
+        <div class="mesh-spinner"></div>
+        <span>Cargando geometría 3D...</span>
+      </div>
+      <div class="mesh-viewer-error" id="mesh-viewer-error" style="display: none;"></div>
+    </div>
+    <div class="mesh-viewer-footer-hints">
+      <span>Arrastrar: rotar 360 grados</span>
+      <span>Rueda: zoom</span>
+      <span>Botón derecho: desplazar</span>
+    </div>
+  </div>
+</div>
+
 <!-- Controlador de la aplicación -->
 <script type="module" src="/src/chat/app.js"></script>
 

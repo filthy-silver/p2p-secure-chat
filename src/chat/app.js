@@ -55,6 +55,11 @@ import {
 } from './storage.js';
 
 import { P2PMeshRoom } from './p2p.js';
+import {
+  isInspectable3D,
+  openMeshViewerModal,
+  setupMeshViewerEvents
+} from './mesh-viewer.js';
 
 // Salas oficiales fijadas de la comunidad
 export const OFFICIAL_ROOMS = [
@@ -889,13 +894,22 @@ function appendFileBubble(fileData, isMe = false) {
           </div>
         ` : ''}
 
-        ${fileData.blobUrl ? `
-          <a href="${escapeHtml(fileData.blobUrl)}" download="${escapeHtml(fileData.fileName)}" class="btn-download-file">
-            Descargar archivo directo
-          </a>
-        ` : `
-          <div style="font-size: 0.75rem; color: var(--muted);">Transferido a compañeros</div>
-        `}
+        <div class="file-actions-row">
+          ${(fileData.blobUrl && isInspectable3D(fileData.fileName)) ? `
+            <button type="button" class="btn-inspect-3d" data-3d-url="${escapeHtml(fileData.blobUrl)}" data-3d-name="${escapeHtml(fileData.fileName)}" title="Inspeccionar geometría, topología y wireframe en 3D">
+              <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.991.991 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88v9zM12 4.15L6.04 7.5 12 10.85l5.96-3.35L12 4.15zM5 8.91v6.18l6 3.38V12.3L5 8.91zm14 0l-6 3.39v6.17l6-3.38V8.91z"/></svg>
+              <span>Inspeccionar Malla 3D</span>
+            </button>
+          ` : ''}
+
+          ${fileData.blobUrl ? `
+            <a href="${escapeHtml(fileData.blobUrl)}" download="${escapeHtml(fileData.fileName)}" class="btn-download-file">
+              Descargar archivo directo
+            </a>
+          ` : `
+            <div style="font-size: 0.75rem; color: var(--muted);">Transferido a compañeros</div>
+          `}
+        </div>
       </div>
     </div>
   `;
@@ -1476,17 +1490,27 @@ function bindEvents() {
     openModal(elements.identityModal || document.getElementById('identity-modal'));
   });
 
-  // Controles del visor Lightbox de imágenes
+  // Controles del visor Lightbox de imágenes y visor 3D de mallas
   elements.btnCloseLightbox?.addEventListener('click', closeLightbox);
   elements.lightboxBackdrop?.addEventListener('click', closeLightbox);
+  setupMeshViewerEvents();
 
-  // Apertura de imágenes al hacer clic en cualquier miniatura de chat
+  // Apertura de imágenes al hacer clic en miniaturas o inspección 3D de modelos
   document.addEventListener('click', (e) => {
     const previewWrap = e.target.closest('.chat-image-preview-wrap');
     if (previewWrap) {
       const url = previewWrap.dataset.imgUrl;
       const caption = previewWrap.dataset.imgCaption;
       if (url) openLightbox(url, caption);
+      return;
+    }
+
+    const btnInspect3D = e.target.closest('.btn-inspect-3d');
+    if (btnInspect3D) {
+      const url = btnInspect3D.dataset['3dUrl'] || btnInspect3D.getAttribute('data-3d-url');
+      const name = btnInspect3D.dataset['3dName'] || btnInspect3D.getAttribute('data-3d-name');
+      if (url) openMeshViewerModal(url, name);
+      return;
     }
   });
 
