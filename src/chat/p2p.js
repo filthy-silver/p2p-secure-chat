@@ -14,6 +14,7 @@ import {
   verifyModeratorCertificate,
   isAuthorizedModerator,
   getFingerprint,
+  verifyInviteToken,
   GENESIS_ADMIN_ROOT_FINGERPRINT,
   bufferToBase64,
   base64ToBuffer
@@ -127,6 +128,8 @@ export class P2PMeshRoom {
     this.peerId = options.identity.fingerprint;
     this.trustedAdminFingerprints = options.trustedAdminFingerprints || [GENESIS_ADMIN_ROOT_FINGERPRINT];
     this.moderatorCertificate = options.moderatorCertificate || null;
+    this.enforceCommunityGate = options.enforceCommunityGate ?? false;
+    this.communityToken = options.communityToken || null;
 
     this.onPeerJoin = options.onPeerJoin || (() => {});
     this.onPeerLeave = options.onPeerLeave || (() => {});
@@ -224,7 +227,8 @@ export class P2PMeshRoom {
 
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/api/chat/signal?roomId=${encodeURIComponent(this.roomId)}&peerId=${encodeURIComponent(this.peerId)}`;
+      const tokenParam = this.communityToken ? `&token=${encodeURIComponent(this.communityToken)}` : '';
+      const wsUrl = `${protocol}//${window.location.host}/api/chat/signal?roomId=${encodeURIComponent(this.roomId)}&peerId=${encodeURIComponent(this.peerId)}${tokenParam}`;
       const ws = new WebSocket(wsUrl);
       this.cloudflareSocket = ws;
 
@@ -934,6 +938,26 @@ export class P2PMeshRoom {
 
     peerObj.profile.publicSpki = spki;
 
+    // Verificación de pertenencia a la comunidad (Zero-Trust P2P)
+    let isCommunityAuthorized = this.trustedAdminFingerprints.includes(fp);
+    if (!isCommunityAuthorized && packet.communityToken) {
+      try {
+        const tokenCheck = await verifyInviteToken(packet.communityToken, this.trustedAdminFingerprints);
+        if (tokenCheck.valid) {
+          isCommunityAuthorized = true;
+          peerObj.profile.communityToken = packet.communityToken;
+        }
+      } catch {}
+    }
+
+    if (this.enforceCommunityGate && !isCommunityAuthorized) {
+      console.warn(`[P2P Zero-Trust] Compañero no autorizado rechazado (${fromPeerId}): sin token de comunidad válido.`);
+      try { peerObj.dataChannel?.close(); } catch {}
+      try { peerObj.peerConnection?.close(); } catch {}
+      this._handlePeerDisconnected(fromPeerId);
+      return;
+    }
+
     // Verificar si es Administrador Raíz directo
     if (this.trustedAdminFingerprints.includes(fp)) {
       peerObj.profile.isModerator = true;
@@ -969,12 +993,13 @@ export class P2PMeshRoom {
     }
     if (this.isDestroyed) return;
 
-    // Le enviamos nuestro perfil actualizado (con credencial de moderador si existe)
+    // Le enviamos nuestro perfil actualizado (con credencial de moderador si existe y token de comunidad)
     this._sendDirect(channel, {
       type: 'HELLO_HANDSHAKE',
       nickname: this.identity.nickname,
       publicSpki: this.identity.publicSpki,
       moderatorCertificate: this.moderatorCertificate,
+      communityToken: this.communityToken,
       timestamp,
       signature
     });

@@ -13,6 +13,14 @@ import {
   FILE_CHUNK_SIZE,
   P2PMeshRoom
 } from '../src/chat/p2p.js';
+import {
+  generateIdentityKeyPair,
+  exportKeyPair,
+  getFingerprint,
+  signPayload,
+  generateInviteToken,
+  GENESIS_ADMIN_ROOT_FINGERPRINT
+} from '../src/chat/crypto.js';
 
 describe('chat/p2p.js · Seguridad, Sanitización y Utilidades WebRTC', () => {
 
@@ -179,6 +187,98 @@ describe('chat/p2p.js · Seguridad, Sanitización y Utilidades WebRTC', () => {
       assert.doesNotThrow(() => {
         room.destroy();
       });
+    });
+  });
+
+  describe('P2PMeshRoom · Blindaje Zero-Trust en Handshake (_processHandshake)', () => {
+    it('cierra canales y desconecta inmediatamente a companeros sin token de invitacion', async () => {
+      const room = Object.create(P2PMeshRoom.prototype);
+      room.roomId = 'general';
+      room.peerId = 'local123';
+      room.enforceCommunityGate = true;
+      room.trustedAdminFingerprints = [GENESIS_ADMIN_ROOT_FINGERPRINT];
+      let disconnectedPeer = null;
+      room._handlePeerDisconnected = (id) => { disconnectedPeer = id; };
+
+      const guestKp = await generateIdentityKeyPair();
+      const guestExp = await exportKeyPair(guestKp);
+      const guestFp = await getFingerprint(guestExp.publicSpki);
+
+      let dcClosed = false;
+      let pcClosed = false;
+      const peerObj = {
+        profile: { id: guestFp },
+        dataChannel: { close() { dcClosed = true; } },
+        peerConnection: { close() { pcClosed = true; } }
+      };
+
+      const timestamp = Date.now();
+      const signature = await signPayload(
+        guestKp.privateKey,
+        { type: 'HELLO_HANDSHAKE', roomId: 'general', from: guestFp, to: 'local123', timestamp }
+      );
+
+      await room._processHandshake({
+        publicSpki: guestExp.publicSpki,
+        timestamp,
+        signature
+        // Sin token de comunidad
+      }, guestFp, peerObj);
+
+      assert.equal(dcClosed, true);
+      assert.equal(pcClosed, true);
+      assert.equal(disconnectedPeer, guestFp);
+    });
+
+    it('acepta y mantiene conectado a un companero con token de invitacion valido', async () => {
+      const room = Object.create(P2PMeshRoom.prototype);
+      room.roomId = 'general';
+      room.peerId = 'local123';
+      room.enforceCommunityGate = true;
+
+      const adminKp = await generateIdentityKeyPair();
+      const adminExp = await exportKeyPair(adminKp);
+      const adminFp = await getFingerprint(adminExp.publicSpki);
+      room.trustedAdminFingerprints = [adminFp];
+
+      let disconnectedPeer = null;
+      room._handlePeerDisconnected = (id) => { disconnectedPeer = id; };
+
+      const guestKp = await generateIdentityKeyPair();
+      const guestExp = await exportKeyPair(guestKp);
+      const guestFp = await getFingerprint(guestExp.publicSpki);
+
+      const token = await generateInviteToken(
+        adminKp.privateKey,
+        adminExp.publicSpki,
+        adminFp,
+        'alumno_verificado',
+        24
+      );
+
+      let dcClosed = false;
+      const peerObj = {
+        profile: { id: guestFp },
+        dataChannel: { close() { dcClosed = true; } },
+        peerConnection: { close() { } }
+      };
+
+      const timestamp = Date.now();
+      const signature = await signPayload(
+        guestKp.privateKey,
+        { type: 'HELLO_HANDSHAKE', roomId: 'general', from: guestFp, to: 'local123', timestamp }
+      );
+
+      await room._processHandshake({
+        publicSpki: guestExp.publicSpki,
+        timestamp,
+        signature,
+        communityToken: token
+      }, guestFp, peerObj);
+
+      assert.equal(dcClosed, false);
+      assert.equal(disconnectedPeer, null);
+      assert.equal(peerObj.profile.communityToken, token);
     });
   });
 

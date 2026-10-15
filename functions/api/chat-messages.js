@@ -6,7 +6,12 @@
  * Transcurrido el tiempo de vida (TTL), Cloudflare autodestruye los mensajes sin dejar rastro.
  */
 
-import { verifyPayload, getFingerprint } from '../../src/chat/crypto.js';
+import {
+  verifyPayload,
+  getFingerprint,
+  verifyInviteToken,
+  GENESIS_ADMIN_ROOT_FINGERPRINT
+} from '../../src/chat/crypto.js';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -99,6 +104,40 @@ export async function onRequest({ request, env }) {
   // 1. GET: Obtener mensajes recientes de la sala
   if (request.method === 'GET') {
     const roomId = sanitizeRoomId(url.searchParams.get('roomId') || 'general');
+    const peerId = (url.searchParams.get('peerId') || '').trim().toLowerCase();
+    const token = url.searchParams.get('token') || '';
+
+    // Si KV está configurado, exigir autorización para leer el búfer
+    if (env && env.EVENTS_KV) {
+      const isEnvAdmin = Boolean(env && env.ADMIN_FINGERPRINT && peerId === String(env.ADMIN_FINGERPRINT).toLowerCase());
+      let isAllowed = (peerId === GENESIS_ADMIN_ROOT_FINGERPRINT.toLowerCase() || isEnvAdmin);
+      if (!isAllowed && peerId) {
+        try {
+          const rawU = await env.EVENTS_KV.get(`user_meta_${peerId}`);
+          if (rawU) {
+            const u = typeof rawU === 'string' ? JSON.parse(rawU) : rawU;
+            if (!u.banned) isAllowed = true;
+          }
+        } catch {}
+      }
+
+      if (!isAllowed && token) {
+        try {
+          const trustedAdmins = [GENESIS_ADMIN_ROOT_FINGERPRINT];
+          if (env && env.ADMIN_FINGERPRINT) trustedAdmins.push(String(env.ADMIN_FINGERPRINT));
+          const tokenCheck = await verifyInviteToken(token, trustedAdmins);
+          if (tokenCheck.valid) isAllowed = true;
+        } catch {}
+      }
+
+      if (!isAllowed) {
+        return json({
+          success: false,
+          error: 'Acceso a mensajes denegado: identidad no autorizada en la comunidad.'
+        }, 403);
+      }
+    }
+
     const messages = await getRoomMessages(env, roomId);
     return json({
       success: true,
@@ -129,6 +168,37 @@ export async function onRequest({ request, env }) {
       // Validar estructura básica del mensaje
       if (!message || typeof message !== 'object' || !message.id) {
         return json({ error: 'Estructura de mensaje no válida' }, 400);
+      }
+
+      // Si KV está configurado, verificar que el emisor esté autorizado en la comunidad
+      if (env && env.EVENTS_KV && message.senderPeerId) {
+        const senderFp = String(message.senderPeerId).trim().toLowerCase();
+        const isEnvAdmin = Boolean(env && env.ADMIN_FINGERPRINT && senderFp === String(env.ADMIN_FINGERPRINT).toLowerCase());
+        let isAllowed = (senderFp === GENESIS_ADMIN_ROOT_FINGERPRINT.toLowerCase() || isEnvAdmin);
+        if (!isAllowed) {
+          try {
+            const rawU = await env.EVENTS_KV.get(`user_meta_${senderFp}`);
+            if (rawU) {
+              const u = typeof rawU === 'string' ? JSON.parse(rawU) : rawU;
+              if (!u.banned) isAllowed = true;
+            }
+          } catch {}
+        }
+        if (!isAllowed && body.token) {
+          try {
+            const trustedAdmins = [GENESIS_ADMIN_ROOT_FINGERPRINT];
+            if (env && env.ADMIN_FINGERPRINT) trustedAdmins.push(String(env.ADMIN_FINGERPRINT));
+            const tokenCheck = await verifyInviteToken(body.token, trustedAdmins);
+            if (tokenCheck.valid) isAllowed = true;
+          } catch {}
+        }
+
+        if (!isAllowed) {
+          return json({
+            success: false,
+            error: 'Emisor no autorizado para persistir mensajes en la comunidad.'
+          }, 403);
+        }
       }
 
       // Validar longitud del texto

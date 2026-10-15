@@ -39,8 +39,8 @@ describe('chat-messages.js · Búfer Efímero de Mensajes con TTL', () => {
     return { context: { request, env }, memory, kvPuts };
   }
 
-  it('devuelve lista vacía en GET si la sala no tiene mensajes', async () => {
-    const { context } = createMockContext('GET', 'http://localhost/api/chat/messages?roomId=general');
+  it('devuelve lista vacía en GET si la sala no tiene mensajes y el usuario está autorizado', async () => {
+    const { context } = createMockContext('GET', 'http://localhost/api/chat/messages?roomId=general&peerId=8c196b38');
     const res = await handleMessagesRequest(context);
     const data = await res.json();
 
@@ -49,6 +49,33 @@ describe('chat-messages.js · Búfer Efímero de Mensajes con TTL', () => {
     assert.equal(data.roomId, 'general');
     assert.equal(data.count, 0);
     assert.deepEqual(data.messages, []);
+  });
+
+  it('rechaza con 403 a usuarios no autorizados que intenten leer mensajes en GET', async () => {
+    const { context } = createMockContext('GET', 'http://localhost/api/chat/messages?roomId=general&peerId=unauthorized');
+    const res = await handleMessagesRequest(context);
+    const data = await res.json();
+
+    assert.equal(res.status, 403);
+    assert.equal(data.success, false);
+    assert.match(data.error, /no autorizada/i);
+  });
+
+  it('rechaza con 403 a usuarios suspendidos o baneados', async () => {
+    const memory = new Map([
+      ['user_meta_banned01', JSON.stringify({ fingerprint: 'banned01', banned: true })]
+    ]);
+    const { context: ctxGet } = createMockContext('GET', 'http://localhost/api/chat/messages?roomId=general&peerId=banned01', null, memory);
+    const resGet = await handleMessagesRequest(ctxGet);
+    assert.equal(resGet.status, 403);
+
+    const { context: ctxPost } = createMockContext('POST', 'http://localhost/api/chat/messages', {
+      roomId: 'general',
+      retentionHours: 24,
+      message: { id: 'msg-banned', text: 'Spam', senderPeerId: 'banned01' }
+    }, memory);
+    const resPost = await handleMessagesRequest(ctxPost);
+    assert.equal(resPost.status, 403);
   });
 
   it('rechaza métodos no soportados con 405', async () => {
@@ -89,11 +116,14 @@ describe('chat-messages.js · Búfer Efímero de Mensajes con TTL', () => {
 
   it('rechaza mensajes que excedan la longitud máxima de texto', async () => {
     const longText = 'x'.repeat(4001);
+    const memory = new Map([
+      ['user_meta_sender01', JSON.stringify({ fingerprint: 'sender01', banned: false })]
+    ]);
     const { context } = createMockContext('POST', 'http://localhost/api/chat/messages', {
       roomId: 'general',
       retentionHours: 24,
-      message: { id: 'msg-too-long', text: longText }
-    });
+      message: { id: 'msg-too-long', text: longText, senderPeerId: 'sender01' }
+    }, memory);
 
     const res = await handleMessagesRequest(context);
     const data = await res.json();
@@ -115,11 +145,15 @@ describe('chat-messages.js · Búfer Efímero de Mensajes con TTL', () => {
       signature: 'aabbccdd_invalid_signature'
     };
 
+    const memory = new Map([
+      ['user_meta_12345678', JSON.stringify({ fingerprint: '12345678', banned: false })]
+    ]);
+
     const { context } = createMockContext('POST', 'http://localhost/api/chat/messages', {
       roomId: 'general',
       retentionHours: 24,
       message
-    });
+    }, memory);
 
     const res = await handleMessagesRequest(context);
     const data = await res.json();
@@ -144,11 +178,15 @@ describe('chat-messages.js · Búfer Efímero de Mensajes con TTL', () => {
     const signature = await signPayload(keys.privateKey, rawMsg);
     const message = { ...rawMsg, signature };
 
-    const { context, kvPuts } = createMockContext('POST', 'http://localhost/api/chat/messages', {
+    const initialMemory = new Map([
+      ['user_meta_87654321', JSON.stringify({ fingerprint: '87654321', banned: false })]
+    ]);
+
+    const { context, kvPuts, memory } = createMockContext('POST', 'http://localhost/api/chat/messages', {
       roomId: 'torbox-ddl',
       retentionHours: 24,
       message
-    });
+    }, initialMemory);
 
     const res = await handleMessagesRequest(context);
     const data = await res.json();
@@ -163,9 +201,8 @@ describe('chat-messages.js · Búfer Efímero de Mensajes con TTL', () => {
     assert.equal(kvPuts[0].key, 'room_buffer:torbox-ddl');
     assert.equal(kvPuts[0].options.expirationTtl, 24 * 3600);
 
-    // Comprobar recuperación por GET
-    const memory = new Map([[kvPuts[0].key, kvPuts[0].value]]);
-    const { context: getCtx } = createMockContext('GET', 'http://localhost/api/chat/messages?roomId=torbox-ddl', null, memory);
+    // Comprobar recuperación por GET con peerId autorizado
+    const { context: getCtx } = createMockContext('GET', 'http://localhost/api/chat/messages?roomId=torbox-ddl&peerId=87654321', null, memory);
     const getRes = await handleMessagesRequest(getCtx);
     const getData = await getRes.json();
 
@@ -176,11 +213,14 @@ describe('chat-messages.js · Búfer Efímero de Mensajes con TTL', () => {
   });
 
   it('acota la retención entre 1 y 72 horas para prevenir abusos', async () => {
+    const memory = new Map([
+      ['user_meta_clampuser', JSON.stringify({ fingerprint: 'clampuser', banned: false })]
+    ]);
     const { context: ctxHigh, kvPuts: putsHigh } = createMockContext('POST', 'http://localhost/api/chat/messages', {
       roomId: 'general',
       retentionHours: 9999, // Excede 72
-      message: { id: 'msg-clamp-high', text: 'Prueba clamp' }
-    });
+      message: { id: 'msg-clamp-high', text: 'Prueba clamp', senderPeerId: 'clampuser' }
+    }, memory);
     const resHigh = await handleMessagesRequest(ctxHigh);
     const dataHigh = await resHigh.json();
     assert.equal(dataHigh.ttlSeconds, 72 * 3600);
@@ -189,8 +229,8 @@ describe('chat-messages.js · Búfer Efímero de Mensajes con TTL', () => {
     const { context: ctxLow, kvPuts: putsLow } = createMockContext('POST', 'http://localhost/api/chat/messages', {
       roomId: 'general',
       retentionHours: 0.2, // Menor que 1
-      message: { id: 'msg-clamp-low', text: 'Prueba clamp low' }
-    });
+      message: { id: 'msg-clamp-low', text: 'Prueba clamp low', senderPeerId: 'clampuser' }
+    }, memory);
     const resLow = await handleMessagesRequest(ctxLow);
     const dataLow = await resLow.json();
     assert.equal(dataLow.ttlSeconds, 1 * 3600);

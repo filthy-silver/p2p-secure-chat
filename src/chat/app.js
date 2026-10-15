@@ -594,12 +594,14 @@ export function closeLightbox() {
 async function saveEphemeralMessageToServer(roomId, msg, retentionHours) {
   if (!roomId || !msg || retentionHours <= 0) return;
   try {
+    const token = localStorage.getItem('p2p_community_access_token') || '';
     await fetch('/api/chat/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         roomId,
         retentionHours,
+        token,
         message: {
           id: msg.id,
           senderPeerId: msg.senderPeerId || state.identity?.fingerprint,
@@ -625,7 +627,9 @@ async function saveEphemeralMessageToServer(roomId, msg, retentionHours) {
 async function loadServerRoomMessages(roomId) {
   if (!roomId) return;
   try {
-    const res = await fetch(`/api/chat/messages?roomId=${encodeURIComponent(roomId)}`);
+    const peerId = encodeURIComponent(state.identity?.fingerprint || '');
+    const token = encodeURIComponent(localStorage.getItem('p2p_community_access_token') || '');
+    const res = await fetch(`/api/chat/messages?roomId=${encodeURIComponent(roomId)}&peerId=${peerId}&token=${token}`);
     const data = await res.json();
     if (data.success && Array.isArray(data.messages) && data.messages.length > 0) {
       const existingIds = new Set(
@@ -694,11 +698,14 @@ function joinRoom(roomId) {
   renderRoomHistory(roomId);
   loadServerRoomMessages(roomId);
 
-  // Instanciar motor de red P2P con soporte para moderación y FileDrop
+  // Instanciar motor de red P2P con soporte para moderación, FileDrop y Muro Zero-Trust
+  const communityToken = localStorage.getItem('p2p_community_access_token') || null;
   state.roomInstance = new P2PMeshRoom({
     roomId,
     identity: state.identity,
     moderatorCertificate: state.moderatorCertificate,
+    communityToken,
+    enforceCommunityGate: true,
     onStatusChange: (status, message) => {
       updateStatusUi(status, message);
     },
