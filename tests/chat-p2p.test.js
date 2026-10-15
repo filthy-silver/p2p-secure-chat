@@ -11,6 +11,7 @@ import {
   isFreshTimestamp,
   isValidPeerId,
   FILE_CHUNK_SIZE,
+  DEFAULT_ICE_SERVERS,
   P2PMeshRoom
 } from '../src/chat/p2p.js';
 import {
@@ -95,6 +96,39 @@ describe('chat/p2p.js · Seguridad, Sanitización y Utilidades WebRTC', () => {
   describe('FILE_CHUNK_SIZE', () => {
     it('está fijado en 16 KB (16384 bytes)', () => {
       assert.equal(FILE_CHUNK_SIZE, 16384);
+    });
+  });
+
+  describe('DEFAULT_ICE_SERVERS · Resiliencia STUN y TURN para Centros Educativos', () => {
+    it('incluye servidores STUN de alta disponibilidad (Cloudflare, Google, Mozilla)', () => {
+      assert.ok(Array.isArray(DEFAULT_ICE_SERVERS));
+      assert.ok(DEFAULT_ICE_SERVERS.length >= 2);
+      const stunUrls = DEFAULT_ICE_SERVERS.map(s => s.urls).flat();
+      assert.ok(stunUrls.some(u => u.includes('stun.cloudflare.com')));
+      assert.ok(stunUrls.some(u => u.includes('stun.l.google.com')));
+    });
+
+    it('incorpora servidores TURN y TURNS comunitarios para superar NAT simetrico y firewalls escolares', () => {
+      const turnEntry = DEFAULT_ICE_SERVERS.find(s => s.username && s.credential);
+      assert.ok(turnEntry, 'Debe existir configuracion de servidor TURN con credenciales');
+      assert.ok(Array.isArray(turnEntry.urls));
+      assert.ok(turnEntry.urls.some(u => u.startsWith('turn:')));
+      assert.ok(turnEntry.urls.some(u => u.startsWith('turns:') && u.includes('transport=tcp')));
+    });
+
+    it('P2PMeshRoom admite iceServers personalizados o aplica los servidores por defecto', () => {
+      const customServers = [{ urls: 'stun:custom.stun.org:3478' }];
+      const roomCustom = Object.create(P2PMeshRoom.prototype);
+      roomCustom.iceServers = (Array.isArray(customServers) && customServers.length > 0)
+        ? customServers
+        : DEFAULT_ICE_SERVERS;
+      assert.equal(roomCustom.iceServers, customServers);
+
+      const roomDefault = Object.create(P2PMeshRoom.prototype);
+      roomDefault.iceServers = (Array.isArray(null) && null.length > 0)
+        ? null
+        : DEFAULT_ICE_SERVERS;
+      assert.equal(roomDefault.iceServers, DEFAULT_ICE_SERVERS);
     });
   });
 

@@ -20,12 +20,27 @@ import {
   base64ToBuffer
 } from './crypto.js';
 
-// Servidores STUN públicos y gratuitos de alta disponibilidad
-const DEFAULT_ICE_SERVERS = [
+// Servidores STUN y TURN públicos y comunitarios de alta disponibilidad
+export const DEFAULT_ICE_SERVERS = [
+  // 1. Servidores STUN (descubrimiento de IP pública y NAT traversal directo)
   { urls: 'stun:stun.cloudflare.com:3478' },
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun.services.mozilla.com' }
+  { urls: 'stun:stun.services.mozilla.com' },
+  { urls: 'stun:openrelay.metered.ca:80' },
+
+  // 2. Servidores TURN de retransmisión comunitaria (OpenRelay de Metered)
+  // Superan NAT simétrico y cortafuegos restrictivos (como los de institutos y centros educativos)
+  {
+    urls: [
+      'turn:openrelay.metered.ca:80',
+      'turn:openrelay.metered.ca:443',
+      'turn:openrelay.metered.ca:443?transport=tcp',
+      'turns:openrelay.metered.ca:443?transport=tcp'
+    ],
+    username: 'openrelayproject',
+    credential: 'openrelayproject'
+  }
 ];
 
 // Relays públicos de Nostr para señalización descentralizada (sin servidor propio)
@@ -130,6 +145,9 @@ export class P2PMeshRoom {
     this.moderatorCertificate = options.moderatorCertificate || null;
     this.enforceCommunityGate = options.enforceCommunityGate ?? false;
     this.communityToken = options.communityToken || null;
+    this.iceServers = (Array.isArray(options.iceServers) && options.iceServers.length > 0)
+      ? options.iceServers
+      : DEFAULT_ICE_SERVERS;
 
     this.onPeerJoin = options.onPeerJoin || (() => {});
     this.onPeerLeave = options.onPeerLeave || (() => {});
@@ -428,7 +446,7 @@ export class P2PMeshRoom {
   async _initiatePeerConnection(targetPeerId, targetProfile) {
     if (this.peers.has(targetPeerId)) return;
 
-    const pc = new RTCPeerConnection({ iceServers: DEFAULT_ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: this.iceServers });
     const dataChannel = pc.createDataChannel('chat_data', { ordered: true });
 
     const peerObj = {
@@ -472,7 +490,7 @@ export class P2PMeshRoom {
     let peerObj = this.peers.get(fromPeerId);
 
     if (!peerObj) {
-      const pc = new RTCPeerConnection({ iceServers: DEFAULT_ICE_SERVERS });
+      const pc = new RTCPeerConnection({ iceServers: this.iceServers });
       peerObj = {
         peerConnection: pc,
         dataChannel: null,
